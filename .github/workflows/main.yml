@@ -1,0 +1,70 @@
+name: Daily News Sentiment Update
+
+on:
+  schedule:
+    - cron: "0 9 * * *"  # runs daily at 9:00 UTC = 4:00 AM Eastern
+  workflow_dispatch:     # allows manual trigger from GitHub UI
+    inputs:
+      risk_type:
+        description: "Which risk type to run"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - enterprise
+          - emerging
+      debug_mode:
+        description: "Enable debug mode"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Set default risk_type for schedule
+        run: echo "RISK_TYPE=${{ github.event.inputs.risk_type || 'all' }}" >> $GITHUB_ENV  # default 'all' if no input
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run enterprise risks
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'enterprise'
+        run: python news_sentiment_scraper.py --risk-type enterprise
+        env:
+          DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
+          MAX_ARTICLES_PER_TERM: 10
+          NEWS_DATA_API_KEY: ${{ secrets.NEWS_DATA_API_KEY }}
+
+      - name: Run emerging risks
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'emerging'
+        run: python news_sentiment_scraper.py --risk-type emerging
+        env:
+          DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
+          MAX_ARTICLES_PER_TERM: 10
+          NEWS_DATA_API_KEY: ${{ secrets.NEWS_DATA_API_KEY }}
+
+      - name: Commit and push updated CSVs
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions@users.noreply.github.com"
+          git add output/*.csv
+          git commit -m "Update sentiment data - $(date +'%Y-%m-%d %H:%M')" || echo "No changes to commit"
+          git push origin main || echo "No changes to push"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}

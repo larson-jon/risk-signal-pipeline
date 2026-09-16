@@ -1,0 +1,16 @@
+requests>=2.31.0
+pandas>=2.0.0
+numpy>=1.24.0
+nltk>=3.8
+vaderSentiment>=3.3.2
+newspaper3k>=0.2.8
+gnews>=0.3.0
+python-dateutil>=2.8.2
+lxml[html_clean]>=5.0.0
+certifi
+bertopic
+scikit-learn
+umap-learn
+hdbscan
+urllib3
+python-dotenv
