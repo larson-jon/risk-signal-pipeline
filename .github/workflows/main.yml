@@ -41,7 +41,14 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          python -m spacy download en_core_web_sm
+
+      - name: Download embedding model (offline fallback)
+        # Fetches all-MiniLM-L6-v2 from a GitHub mirror so the topic stage does
+        # not depend on huggingface.co being reachable at run time.
+        run: python download_model.py
 
       - name: Run enterprise risks
         if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'enterprise'
@@ -58,6 +65,18 @@ jobs:
           DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
           MAX_ARTICLES_PER_TERM: 10
           NEWS_DATA_API_KEY: ${{ secrets.NEWS_DATA_API_KEY }}
+
+      - name: Cluster enterprise risk topics
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'enterprise'
+        run: python topic_clustering.py --risk-type enterprise
+        env:
+          DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
+
+      - name: Cluster emerging risk topics
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'emerging'
+        run: python topic_clustering.py --risk-type emerging
+        env:
+          DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
 
       - name: Commit and push updated CSVs
         run: |

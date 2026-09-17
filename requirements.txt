@@ -8,9 +8,18 @@ gnews>=0.3.0
 python-dateutil>=2.8.2
 lxml[html_clean]>=5.0.0
 certifi
-bertopic
+urllib3
+python-dotenv
+
+# Stage 3 - spaCy NLP enrichment (entities + noun-phrase keywords)
+# The English model is installed separately, see README:
+#   python -m spacy download en_core_web_sm
+spacy>=3.7.0
+
+# Stage 4 - topic clustering
+# sentence-transformers produces the document embeddings BERTopic clusters on.
+sentence-transformers>=2.7.0
+bertopic>=0.16.0
 scikit-learn
 umap-learn
 hdbscan
-urllib3
-python-dotenv
