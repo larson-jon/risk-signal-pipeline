@@ -108,13 +108,25 @@ RISK_TYPE_CONFIG = {
         "input": "output/enterprise_risks_online_sentiment.csv",
         "articles_out": "output/enterprise_risks_topics.csv",
         "summary_out": "output/enterprise_risks_topic_summary.csv",
+        "encoded": "data/EnterpriseRisksListEncoded.csv",
+        "risk_id_col": "ENTERPRISE_RISK_ID",
     },
     "emerging": {
         "input": "output/emerging_risks_online_sentiment.csv",
         "articles_out": "output/emerging_risks_topics.csv",
         "summary_out": "output/emerging_risks_topic_summary.csv",
+        "encoded": "data/EmergingRisksListEncoded.csv",
+        "risk_id_col": "EMERGING_RISK_ID",
     },
 }
+
+
+def _with_suffix(path, suffix):
+    """Insert `suffix` before the file extension (no-op if suffix is empty)."""
+    if not suffix:
+        return path
+    p = Path(path)
+    return str(p.with_name(p.stem + suffix + p.suffix))
 
 
 def _safe_print(text):
@@ -239,8 +251,117 @@ def dominant(series):
     return Counter(vals).most_common(1)[0][0]
 
 
-def summarize_topics(df, topic_model):
+def _distinct_keywords(words, limit=5):
+    """Pick readable, non-redundant keywords from a topic's (word, score) list.
+
+    BERTopic often returns overlapping n-grams (e.g. "ponzi", "ponzi scheme",
+    "scheme"). We keep the most informative variant and drop terms that are
+    substrings of an already-kept phrase, so the description reads cleanly.
+    """
+    kept = []
+    for word, _ in words:
+        w = (word or "").strip()
+        if not w:
+            continue
+        wl = w.lower()
+        # skip exact duplicates (case-insensitive)
+        if any(wl == k.lower() for k in kept):
+            continue
+        # skip if this term overlaps a kept term as a sub/superstring
+        redundant = any(wl in k.lower() or k.lower() in wl for k in kept)
+        if redundant:
+            # prefer the longer, more specific phrase
+            for i, k in enumerate(kept):
+                if k.lower() in wl and len(w) > len(k):
+                    kept[i] = w
+            continue
+        kept.append(w)
+        if len(kept) >= limit:
+            break
+    # Final guard: collapse any case-insensitive duplicates that the
+    # substring-replacement step may have reintroduced, preserving order.
+    seen, unique = set(), []
+    for k in kept:
+        if k.lower() not in seen:
+            seen.add(k.lower())
+            unique.append(k)
+    return unique
+
+
+def _humanize_keywords(keywords):
+    """Join keywords into a natural phrase: 'a, b, c and d'."""
+    if not keywords:
+        return ""
+    if len(keywords) == 1:
+        return keywords[0]
+    return ", ".join(keywords[:-1]) + " and " + keywords[-1]
+
+
+def topic_description(topic_model, topic_id, group, rep_docs=None, risk_map=None):
+    """Compose a unique, readable one-line description for a topic.
+
+    Combines the topic's distinguishing keywords, its dominant sentiment, the
+    risks it touches, and (when available) its most representative article
+    title as a concrete example.
+    """
+    if topic_id == -1:
+        return ("Articles that did not fit any coherent topic "
+                f"({len(group)} unclustered).")
+
+    words = topic_model.get_topic(topic_id) or []
+    keywords = _distinct_keywords(words, limit=5)
+    theme = _humanize_keywords(keywords) or f"topic {topic_id}"
+
+    sentiment = (dominant(group.get("SENTIMENT", pd.Series(dtype=str))) or "mixed").lower()
+    n = len(group)
+
+    # Risk context, using descriptions when we have them.
+    risk_map = risk_map or {}
+    risk_ids = sorted({str(r) for r in group.get("RISK_ID", pd.Series(dtype=str)).dropna()},
+                      key=lambda x: (len(x), x))
+    if risk_ids:
+        named = []
+        for rid in risk_ids[:3]:
+            desc = risk_map.get(rid, {}).get("label")
+            named.append(f"{desc}" if desc else f"risk {rid}")
+        risk_part = "; ".join(named)
+        if len(risk_ids) > 3:
+            risk_part += f"; +{len(risk_ids) - 3} more"
+        risk_clause = f" Linked to {risk_part}."
+    else:
+        risk_clause = ""
+
+    # A concrete example headline, if we have representative docs. Prefer a
+    # headline that actually mentions one of the topic keywords, so the example
+    # reflects the theme rather than an incidental representative doc.
+    example = ""
+    if rep_docs:
+        heads = []
+        for d in rep_docs:
+            head = (d or "").strip().split(". ")[0].strip()
+            if 15 <= len(head) <= 140:
+                heads.append(head)
+        kw_lower = [k.lower() for k in keywords]
+        for head in heads:
+            hl = head.lower()
+            if any(k in hl for k in kw_lower):
+                example = head
+                break
+        if not example:
+            example = heads[0] if heads else (rep_docs[0] or "").strip()[:140]
+
+    desc = f"Coverage of {theme}"
+    desc += f", with mostly {sentiment} sentiment" if sentiment != "mixed" else ""
+    desc += f" ({n} articles)."
+    if example:
+        desc += f' For example: "{example}."'
+    desc += risk_clause
+    return desc
+
+
+def summarize_topics(df, topic_model, rep_docs_map=None, risk_map=None):
     """Build a per-topic summary keyed back to the risk IDs."""
+    rep_docs_map = rep_docs_map or {}
     rows = []
     for topic_id, group in df.groupby("TOPIC_ID"):
         risk_ids = sorted(
@@ -249,6 +370,12 @@ def summarize_topics(df, topic_model):
         # top keywords from the c-TF-IDF model
         words = topic_model.get_topic(topic_id) if topic_id != -1 else []
         top_keywords = ", ".join(w for w, _ in words[:8] if w) if words else ""
+
+        description = topic_description(
+            topic_model, topic_id, group,
+            rep_docs=rep_docs_map.get(topic_id),
+            risk_map=risk_map,
+        )
 
         # most common entities across the cluster
         entity_counter = Counter()
@@ -262,6 +389,7 @@ def summarize_topics(df, topic_model):
         rows.append({
             "TOPIC_ID": topic_id,
             "TOPIC_LABEL": topic_label(topic_model, topic_id),
+            "TOPIC_DESCRIPTION": description,
             "ARTICLE_COUNT": len(group),
             "RISK_IDS": ", ".join(risk_ids),
             "DISTINCT_RISK_COUNT": len(risk_ids),
@@ -269,6 +397,13 @@ def summarize_topics(df, topic_model):
             "AVG_SENTIMENT_COMPOUND": round(
                 pd.to_numeric(
                     group.get("SENTIMENT_COMPOUND", pd.Series(dtype=float)),
+                    errors="coerce",
+                ).mean(),
+                4,
+            ),
+            "AVG_QUALITY": round(
+                pd.to_numeric(
+                    group.get("QUALITY_SCORE", pd.Series(dtype=float)),
                     errors="coerce",
                 ).mean(),
                 4,
@@ -288,7 +423,67 @@ def summarize_topics(df, topic_model):
     return summary
 
 
-def run(input_path, articles_out, summary_out):
+def _decode_term(term):
+    """Decode a single encoded search term (same scheme as the scraper)."""
+    try:
+        n = int(term)
+        byte_len = (n.bit_length() + 7) // 8
+        return n.to_bytes(byte_len, byteorder="little").decode("utf-8")
+    except (ValueError, UnicodeDecodeError, OverflowError):
+        return None
+
+
+def load_risk_map(encoded_path, risk_id_col):
+    """Map risk ID -> {label, terms} by decoding the encoded search-term CSV.
+
+    Used to phrase topic descriptions in terms of the risks they touch. Returns
+    an empty map (falling back to bare IDs) if the file is missing.
+    """
+    risk_map = {}
+    if not encoded_path:
+        return risk_map
+    path = Path(encoded_path)
+    if not path.exists():
+        return risk_map
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        return risk_map
+    if risk_id_col not in df or "ENCODED_TERMS" not in df:
+        return risk_map
+    df["_decoded"] = df["ENCODED_TERMS"].apply(_decode_term)
+    for rid, group in df.groupby(risk_id_col):
+        terms = [t.strip().strip('"').strip()
+                 for t in group["_decoded"].dropna().tolist() if t and t.strip()]
+        if terms:
+            risk_map[str(int(rid))] = {"label": terms[0], "terms": terms}
+    return risk_map
+
+
+def filter_recent(df, days):
+    """Keep only articles published within `days` of the most recent article.
+
+    We anchor the window to the latest PUBLISHED_DATE in the data (not today's
+    date) so the filter behaves predictably even if the scraper hasn't run in a
+    while. Rows with an unparseable date are dropped from the windowed view.
+    """
+    dates = pd.to_datetime(df["PUBLISHED_DATE"], errors="coerce")
+    latest = dates.max()
+    if pd.isna(latest):
+        print("WARNING: no parseable PUBLISHED_DATE values; skipping date filter.")
+        return df
+    cutoff = latest - pd.Timedelta(days=days)
+    mask = dates >= cutoff
+    kept = df[mask].copy()
+    print(
+        f"Date filter: last {days} days "
+        f"({cutoff.date()} to {latest.date()}) -> {len(kept)} of {len(df)} articles"
+    )
+    return kept
+
+
+def run(input_path, articles_out, summary_out, days=None,
+        encoded_path=None, risk_id_col=None):
     input_path = Path(input_path)
     if not input_path.exists():
         print(f"ERROR: input file not found: {input_path}")
@@ -302,6 +497,25 @@ def run(input_path, articles_out, summary_out):
         print("Input has no articles - nothing to cluster.")
         sys.exit(0)
 
+    if days:
+        df = filter_recent(df, days)
+        if df.empty:
+            print("No articles in the selected window - nothing to cluster.")
+            sys.exit(0)
+
+    risk_map = load_risk_map(encoded_path, risk_id_col)
+
+    # Content quality - fill the QUALITY_SCORE column so downstream trend / gap
+    # analysis can filter boilerplate (press releases, digests, transcripts).
+    try:
+        from content_quality import score_frame
+        df["QUALITY_SCORE"] = score_frame(df)
+        lowq = int((df["QUALITY_SCORE"] < 0.5).sum())
+        print(f"Scored content quality: {lowq} of {len(df)} articles are low-quality "
+              f"(<0.5).")
+    except Exception as e:
+        print(f"WARNING: content quality scoring failed ({e}); leaving QUALITY_SCORE as-is.")
+
     # Stage 3 - spaCy enrichment
     print("Enriching articles with spaCy (entities + noun-phrase keywords)...")
     df = enrich_with_spacy(df)
@@ -309,11 +523,13 @@ def run(input_path, articles_out, summary_out):
     # Stage 4 - embed + cluster
     docs = build_documents(df)
     n_docs = len(docs)
+    rep_docs_map = {}
 
     if n_docs < 3:
         print(f"Only {n_docs} article(s) - too few to cluster meaningfully.")
         df["TOPIC_ID"] = -1
         df["TOPIC_LABEL"] = "Outlier / Unclustered"
+        topic_model = _DummyModel()
     else:
         print(f"Embedding and clustering {n_docs} articles...")
         topic_model = make_topic_model(n_docs)
@@ -321,21 +537,31 @@ def run(input_path, articles_out, summary_out):
         df["TOPIC_ID"] = topics
         df["TOPIC_LABEL"] = [topic_label(topic_model, t) for t in topics]
 
+        # Representative docs per topic - used to give each topic a concrete
+        # example in its description.
+        try:
+            rep_docs_map = topic_model.get_representative_docs()
+        except Exception:
+            rep_docs_map = {}
+
         n_topics = len({t for t in topics if t != -1})
         n_outliers = sum(1 for t in topics if t == -1)
         print(f"Found {n_topics} topic(s); {n_outliers} article(s) left as outliers.")
+
+    # ---- per-topic summary (adds TOPIC_DESCRIPTION) ----
+    summary = summarize_topics(df, topic_model, rep_docs_map=rep_docs_map,
+                               risk_map=risk_map)
+
+    # Attach the generated description back onto each article row too.
+    desc_by_topic = dict(zip(summary["TOPIC_ID"], summary["TOPIC_DESCRIPTION"])) \
+        if not summary.empty else {}
+    df["TOPIC_DESCRIPTION"] = df["TOPIC_ID"].map(desc_by_topic).fillna("")
 
     # ---- write per-article output ----
     Path(articles_out).parent.mkdir(exist_ok=True)
     df.to_csv(articles_out, index=False, encoding="utf-8")
     print(f"Wrote per-article topics -> {articles_out}")
 
-    # ---- write per-topic summary ----
-    if "TOPIC_ID" in df and n_docs >= 3:
-        summary = summarize_topics(df, topic_model)
-    else:
-        # trivial summary when we couldn't cluster
-        summary = summarize_topics(df, _DummyModel())
     summary.to_csv(summary_out, index=False, encoding="utf-8")
     print(f"Wrote topic summary -> {summary_out}")
 
@@ -355,6 +581,9 @@ class _DummyModel:
     def get_topic(self, _topic_id):
         return []
 
+    def get_representative_docs(self, *_args, **_kwargs):
+        return {}
+
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -364,6 +593,12 @@ def parse_args():
     p.add_argument("--input", help="Path to a sentiment CSV (overrides --risk-type).")
     p.add_argument("--articles-out", help="Path for per-article topic CSV.")
     p.add_argument("--summary-out", help="Path for per-topic summary CSV.")
+    p.add_argument("--days", type=int,
+                   help="Only cluster articles from the last N days (anchored to "
+                        "the most recent article date). Outputs get a _last<N>d suffix.")
+    p.add_argument("--encoded", help="Encoded risk-terms CSV (for topic descriptions).")
+    p.add_argument("--risk-id-col", dest="risk_id_col",
+                   help="Risk ID column in the encoded CSV.")
     return p.parse_args()
 
 
@@ -371,19 +606,27 @@ def main():
     setup_ssl_verification()
     args = parse_args()
 
+    # Suffix for default output names when a date window is applied.
+    suffix = f"_last{args.days}d" if args.days else ""
+
+    encoded = risk_id_col = None
     if args.input:
         input_path = args.input
-        articles_out = args.articles_out or str(
-            Path(input_path).with_name(Path(input_path).stem + "_topics.csv")
-        )
-        summary_out = args.summary_out or str(
-            Path(input_path).with_name(Path(input_path).stem + "_topic_summary.csv")
-        )
+        default_articles = Path(input_path).with_name(
+            Path(input_path).stem + f"_topics{suffix}.csv")
+        default_summary = Path(input_path).with_name(
+            Path(input_path).stem + f"_topic_summary{suffix}.csv")
+        articles_out = args.articles_out or str(default_articles)
+        summary_out = args.summary_out or str(default_summary)
+        encoded = args.encoded
+        risk_id_col = args.risk_id_col
     elif args.risk_type:
         cfg = RISK_TYPE_CONFIG[args.risk_type]
         input_path = cfg["input"]
-        articles_out = args.articles_out or cfg["articles_out"]
-        summary_out = args.summary_out or cfg["summary_out"]
+        articles_out = args.articles_out or _with_suffix(cfg["articles_out"], suffix)
+        summary_out = args.summary_out or _with_suffix(cfg["summary_out"], suffix)
+        encoded = args.encoded or cfg["encoded"]
+        risk_id_col = args.risk_id_col or cfg["risk_id_col"]
     else:
         print("ERROR: provide --risk-type {enterprise|emerging} or --input <csv>")
         sys.exit(1)
@@ -391,9 +634,12 @@ def main():
     print("#" * 50)
     print("Risk News Topic Clustering (spaCy + sentence-transformers + BERTopic)")
     print(f"Input: {input_path}")
+    if args.days:
+        print(f"Window: last {args.days} days")
     print("#" * 50)
 
-    run(input_path, articles_out, summary_out)
+    run(input_path, articles_out, summary_out, days=args.days,
+        encoded_path=encoded, risk_id_col=risk_id_col)
     print("#" * 50)
     print("Done.")
 

@@ -78,11 +78,38 @@ jobs:
         env:
           DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
 
-      - name: Commit and push updated CSVs
+      - name: Build enterprise trends
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'enterprise'
+        run: python topic_trends.py --risk-type enterprise
+
+      - name: Build emerging trends
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'emerging'
+        run: python topic_trends.py --risk-type emerging
+
+      - name: Score enterprise taxonomy gaps
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'enterprise'
+        run: python topic_gaps.py --risk-type enterprise
+
+      - name: Score emerging taxonomy gaps
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'emerging'
+        run: python topic_gaps.py --risk-type emerging
+
+      - name: Build enterprise report
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'enterprise'
+        run: python build_report.py --risk-type enterprise
+
+      - name: Build emerging report
+        if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'emerging'
+        run: python build_report.py --risk-type emerging
+
+      - name: Build report index
+        run: python build_index.py
+
+      - name: Commit and push updated data + reports
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions@users.noreply.github.com"
-          git add output/*.csv
+          git add output/*.csv reports/*.html
           git commit -m "Update sentiment data - $(date +'%Y-%m-%d %H:%M')" || echo "No changes to commit"
           git push origin main || echo "No changes to push"
         env:

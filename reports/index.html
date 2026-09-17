@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk Signal Reports</title>
+<style>
+  :root {
+    --bg: #0f1720; --panel: #172232; --panel2: #1e2c40; --text: #e6edf5;
+    --muted: #93a4bb; --border: #2a3a52; --accent: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  header { padding: 40px 24px 24px; max-width: 900px; margin: 0 auto; }
+  h1 { margin: 0 0 8px; font-size: 26px; }
+  .lede { color: var(--muted); font-size: 15px; max-width: 70ch; }
+  main { max-width: 900px; margin: 0 auto; padding: 8px 24px 60px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .card { display: block; text-decoration: none; color: inherit;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; transition: border-color .15s, transform .15s; }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card-title { font-size: 17px; font-weight: 650; margin-bottom: 6px; }
+  .card-desc { color: var(--muted); font-size: 13.5px; margin-bottom: 12px; }
+  .card-meta { font-size: 13px; color: var(--text); }
+  .card-cov { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .card-go { color: var(--accent); font-size: 13px; font-weight: 600; margin-top: 14px; }
+  .empty { color: var(--muted); padding: 40px; text-align: center; }
+  .how { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin-top: 24px; color: var(--muted); font-size: 13.5px; max-width: 70ch; }
+  .how b { color: var(--text); }
+  footer { max-width: 900px; margin: 0 auto; padding: 20px 24px 40px;
+    color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Risk Signal Reports</h1>
+  <p class="lede">News coverage turned into risk signals: articles are fetched per risk, scored
+  for sentiment, enriched with spaCy, embedded and clustered into topics with BERTopic, tracked
+  month over month for signal intensity, and scored for how well each topic fits the risk that
+  surfaced it. Open a report below and see its "How this was built" tab for detail.</p>
+</header>
+<main>
+  <div class="grid">
+    <a class="card" href="emerging_risks_report.html">
+      <div class="card-title">Emerging Risk — Topic Explorer</div>
+      <div class="card-desc">Emerging risks — full history clustering, trends, and taxonomy-gap analysis.</div>
+      <div class="card-meta">32,683 articles · 610 topics</div>
+      <div class="card-cov">Coverage: 2026-01 → 2026-09 · 9 months</div>
+      <div class="card-go">Open report →</div>
+    </a>
+    <a class="card" href="enterprise_risks_report.html">
+      <div class="card-title">Enterprise Risk — Topic Explorer</div>
+      <div class="card-desc">Enterprise risks — full history clustering, trends, and taxonomy-gap analysis.</div>
+      <div class="card-meta">8,708 articles · 180 topics</div>
+      <div class="card-cov">Coverage: 2026-01 → 2026-09 · 9 months</div>
+      <div class="card-go">Open report →</div>
+    </a>
+    <a class="card" href="emerging_risks_report_last30d.html">
+      <div class="card-title">Emerging Risk - Topic Explorer (Last 30 Days: Aug 17 - Sep 16, 2026)</div>
+      <div class="card-desc">Emerging risks — most recent 30 days only.</div>
+      <div class="card-meta">4,310 articles · 104 topics</div>
+      
+      <div class="card-go">Open report →</div>
+    </a>
+    <a class="card" href="enterprise_risks_report_last30d.html">
+      <div class="card-title">Enterprise Risk - Topic Explorer (Last 30 Days: Aug 17 - Sep 16, 2026)</div>
+      <div class="card-desc">Enterprise risks — most recent 30 days only.</div>
+      <div class="card-meta">1,121 articles · 26 topics</div>
+      
+      <div class="card-go">Open report →</div>
+    </a>
+  </div>
+  <div class="how">
+    <b>What to look for.</b> Each report has four views: <b>Topics</b> (browse and search all
+    clusters), <b>Trends over time</b> (which themes are growing per risk), <b>Candidate gaps</b>
+    (topics that are intense and recent but fit their risk poorly — possible blind spots), and
+    <b>How this was built</b> (the full methodology).
+  </div>
+</main>
+<footer>Generated 2026-09-17 14:54 · self-contained HTML, no external dependencies.</footer>
+</body>
+</html>

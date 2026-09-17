@@ -14,9 +14,21 @@ with spaCy NLP, and groups them into topics through clustering.
    cleaned noun-phrase keywords from article text (`spacy_enrichment.py`).
 4. **Topic clustering** — embed articles with `sentence-transformers`, cluster them into
    topics with BERTopic, and surface which risks cluster together (`topic_clustering.py`).
+5. **Content quality** — score each article 0–1 on how substantive it is, penalizing
+   press-release / wire boilerplate, templated digests, and thin text (`content_quality.py`).
+   Fills the previously-unused `QUALITY_SCORE` column.
+6. **Trend tracking** — bin each topic's articles by month and score month-over-month
+   *signal intensity*, so growing or fading themes stand out (`topic_trends.py`).
+7. **Taxonomy gaps** — measure how loosely each topic fits the risk that surfaced it
+   (embedding distance) plus novelty, to flag possible uncovered risk aspects (`topic_gaps.py`).
+8. **Report** — build standalone, interactive HTML explorers (topics, trends, gaps, and a
+   methodology tab) in `reports/`, with a landing-page `index.html` (`build_report.py`,
+   `build_index.py`).
 
-> All four stages are implemented. Stages 1–2 run in `news_sentiment_scraper.py`; stages 3–4
-> run in `topic_clustering.py`, which reads the sentiment CSVs the scraper produces.
+> All stages are implemented. Stage 1–2 run in `news_sentiment_scraper.py`; stages 3–5 run in
+> `topic_clustering.py` (which invokes `spacy_enrichment.py` and `content_quality.py`); stage
+> 6 in `topic_trends.py`; stage 7 in `topic_gaps.py`; stage 8 in `build_report.py` +
+> `build_index.py`. Data CSVs are written to `output/`; publishable HTML reports to `reports/`.
 
 ### How the topic stage works
 
@@ -32,17 +44,46 @@ with spaCy NLP, and groups them into topics through clustering.
 Clustering parameters (UMAP neighbors, HDBSCAN cluster size) scale with the number of
 articles, so the stage works on both small samples and larger production runs.
 
+### How the trend stage works
+
+The goal is to see whether risk-related themes are **growing or fading over time**, and to
+spot emerging aspects of risk the current taxonomy may not capture. To keep topic IDs
+comparable across months, `topic_trends.py` uses the topics from a single full-history
+clustering run, then bins each topic's articles by calendar month and scores a composite
+**signal intensity** per topic per month:
+
+```
+volume       = number of articles for the topic that month
+neg_share    = fraction of those articles labeled Negative
+avg_compound = mean VADER compound score that month (-1..+1)
+severity     = 1 + neg_share + max(0, -avg_compound)      (>= 1)
+intensity    = volume * severity
+```
+
+So a negative surge scores higher than a neutral one of equal volume, while intensity never
+falls below raw volume. Per topic it also computes a trend slope, recent **momentum**
+(last 3 months vs the prior 3), and peak month/intensity. The outlier cluster is always
+excluded, and boilerplate / low-signal topics (overwhelmingly neutral and thinly spread)
+are flagged `IS_BENIGN` so they can be dropped from the view.
+
 ## Project layout
 
 ```
 .
 ├── news_sentiment_scraper.py   # fetch + sentiment (stages 1-2)
 ├── spacy_enrichment.py         # spaCy entity + keyword enrichment (stage 3)
-├── topic_clustering.py         # sentence-transformers + BERTopic (stages 3-4)
+├── content_quality.py          # article quality scoring (stage 5)
+├── topic_clustering.py         # sentence-transformers + BERTopic + quality (stages 3-5)
+├── topic_trends.py             # monthly signal-intensity trends (stage 6)
+├── topic_gaps.py               # taxonomy-fit / novelty scoring (stage 7)
+├── build_report.py             # interactive HTML reports (stage 8)
+├── build_index.py              # landing-page index over the reports
+├── download_model.py           # fetch embedding model for offline use
 ├── data/                       # encoded risk search-term lists
 │   ├── EnterpriseRisksListEncoded.csv
 │   └── EmergingRisksListEncoded.csv
-├── output/                     # generated sentiment + topic CSVs
+├── output/                     # generated CSVs (sentiment, topics, trends, gaps)
+├── reports/                    # publishable HTML reports + index.html
 ├── tests/                      # test suite
 ├── .github/workflows/          # CI / scheduled runs
 └── requirements.txt
@@ -121,15 +162,59 @@ python topic_clustering.py --input output/enterprise_risks_online_sentiment.csv
 This writes two files per risk type:
 
 - `output/<type>_risks_topics.csv` — every article with its assigned `TOPIC_ID`,
-  `TOPIC_LABEL`, spaCy `ENTITIES`, and `NLP_KEYWORDS`.
-- `output/<type>_risks_topic_summary.csv` — one row per topic showing article count,
-  which `RISK_IDS` fall into it, the dominant sentiment, and the top keywords / entities.
+  `TOPIC_LABEL`, a readable `TOPIC_DESCRIPTION`, spaCy `ENTITIES`, and `NLP_KEYWORDS`.
+- `output/<type>_risks_topic_summary.csv` — one row per topic with article count,
+  which `RISK_IDS` fall into it, the dominant sentiment, top keywords / entities, and a
+  generated `TOPIC_DESCRIPTION`.
 
 The topic summary is the quickest way to see clusters of risk: topics spanning several
 distinct `RISK_IDS` point to themes that cut across the risk landscape.
 
-Set `EMBEDDING_MODEL` to swap the sentence-transformers model (defaults to
-`all-MiniLM-L6-v2`).
+Add `--days 30` to cluster only the last N days (anchored to the most recent article date);
+outputs get a `_last30d` suffix. Set `EMBEDDING_MODEL` to swap the sentence-transformers
+model (defaults to `all-MiniLM-L6-v2`).
+
+### Trend tracking
+
+Cluster the **full history** first (no `--days`), then build monthly trends:
+
+```powershell
+python topic_trends.py --risk-type enterprise
+python topic_trends.py --risk-type emerging
+
+# exclude boilerplate / low-signal topics
+python topic_trends.py --risk-type emerging --drop-benign
+```
+
+This writes:
+
+- `output/<type>_risks_trends.csv` — one row per (topic, month) with `volume`, `neg_share`,
+  `avg_compound`, `share_of_coverage`, `severity`, and composite `intensity`.
+- `output/<type>_risks_trends_topics.csv` — one row per topic with `PEAK_MONTH`,
+  `PEAK_INTENSITY`, `TREND_SLOPE`, `MOMENTUM`, and the `IS_BENIGN` flag.
+
+The console prints the topics with the strongest recent momentum — the emerging signals
+worth a closer look.
+
+### Interactive report
+
+Build a standalone HTML explorer (embeds its data; no server or internet needed):
+
+```powershell
+# picks up the topic + trend CSVs for the risk type automatically
+python build_report.py --risk-type enterprise
+python build_report.py --risk-type emerging
+```
+
+The report has two tabs:
+
+- **Topics** — searchable, filterable topic cards (by risk, sentiment) with descriptions,
+  keyword / entity chips, and drill-in to the underlying articles.
+- **Trends over time** — per-risk line charts of top topics' monthly signal intensity, a
+  "strongest rising signals" callout, and a toggle to hide benign topics.
+
+Pass `--trends <csv>` (or `--topics/--summary`) to point at specific files, or omit trends
+to build a topics-only report.
 
 ## License
 
