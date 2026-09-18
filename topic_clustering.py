@@ -49,6 +49,11 @@ def setup_ssl_verification():
 # ---------------------------------------------------------------------------
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
+# Cosine similarity at/above which two articles are treated as near-duplicates
+# (syndicated wire stories). Tuned to catch reprints without merging distinct
+# stories on the same subject.
+DUP_SIMILARITY = float(os.getenv("DUP_SIMILARITY", "0.93"))
+
 # Default embedding model. Can be a sentence-transformers hub name or a local
 # folder path. See resolve_embedding_model() for how a local copy is discovered.
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
@@ -173,19 +178,94 @@ def enrich_with_spacy(df):
     return df
 
 
-def make_topic_model(n_docs):
+def get_embedding_model():
+    """Load the sentence-transformer once (offline-aware)."""
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer(resolve_embedding_model())
+
+
+def embed_documents(docs, embedding_model):
+    """Embed documents via the persistent cache (so re-runs are fast)."""
+    from embedding_cache import encode_cached
+    return encode_cached(embedding_model, docs, model_name=EMBEDDING_MODEL)
+
+
+def dedup_documents(docs, embeddings, quality=None, threshold=DUP_SIMILARITY):
+    """Group near-duplicate documents and pick one representative per group.
+
+    Syndicated wire stories appear many times with near-identical text and
+    inflate a topic's apparent volume. We collapse them: documents whose
+    embeddings are >= `threshold` cosine similar (and share a cheap blocking
+    key) are treated as one story for clustering. Clustering runs on the
+    representatives only; the assigned topic is later propagated to every
+    member of the group.
+
+    To stay near-linear on tens of thousands of docs we only compare within
+    blocks keyed by a normalized prefix of the document text, and also collapse
+    exact-text duplicates directly.
+
+    Returns
+    -------
+    group_of : list[int]   group id per input doc (same length as docs)
+    reps : list[int]       representative doc index for each group id
+    """
+    import re
+
+    n = len(docs)
+    quality = quality if quality is not None else [1.0] * n
+
+    def block_key(text):
+        t = re.sub(r"[^a-z0-9 ]", "", (text or "").lower())
+        t = re.sub(r"\s+", " ", t).strip()
+        return t[:40]  # first ~40 chars of normalized text
+
+    # Bucket doc indices by blocking key; exact-text dups share a key anyway.
+    blocks = {}
+    for i, d in enumerate(docs):
+        blocks.setdefault(block_key(d), []).append(i)
+
+    group_of = [-1] * n
+    reps = []
+
+    for _key, idxs in blocks.items():
+        # Within a block, greedily assign each doc to an existing group whose
+        # representative is similar enough, else start a new group.
+        local_reps = []  # (group_id, rep_index)
+        for i in idxs:
+            assigned = None
+            for gid, rep in local_reps:
+                if float(embeddings[i] @ embeddings[rep]) >= threshold:
+                    assigned = gid
+                    # keep the higher-quality / longer doc as representative
+                    if (quality[i], len(docs[i])) > (quality[rep], len(docs[rep])):
+                        for j, (g2, _r) in enumerate(local_reps):
+                            if g2 == gid:
+                                local_reps[j] = (gid, i)
+                        reps[gid] = i
+                    break
+            if assigned is None:
+                gid = len(reps)
+                reps.append(i)
+                local_reps.append((gid, i))
+                assigned = gid
+            group_of[i] = assigned
+
+    return group_of, reps
+
+
+def make_topic_model(n_docs, embedding_model, nr_topics=None):
     """Create a BERTopic model with parameters that adapt to dataset size.
 
     HDBSCAN and UMAP defaults assume a fairly large corpus. For the small
     sample CSVs committed to the repo we shrink neighbor / cluster sizes so
     the pipeline still produces topics instead of erroring or marking every
     article as an outlier.
+
+    `nr_topics` (int or "auto") is passed to BERTopic to merge the long tail of
+    tiny topics into fewer, more interpretable themes.
     """
     from bertopic import BERTopic
-    from sentence_transformers import SentenceTransformer
     from sklearn.feature_extraction.text import CountVectorizer
-
-    embedding_model = SentenceTransformer(resolve_embedding_model())
 
     # Vectorizer for the c-TF-IDF topic keywords: drop English stop words and
     # single-character tokens so topic labels stay meaningful.
@@ -203,6 +283,7 @@ def make_topic_model(n_docs):
         vectorizer_model=vectorizer_model,
         min_topic_size=min_topic_size,
         calculate_probabilities=False,
+        nr_topics=nr_topics,
         verbose=DEBUG_MODE,
     )
 
@@ -386,11 +467,17 @@ def summarize_topics(df, topic_model, rep_docs_map=None, risk_map=None):
                     entity_counter[ent] += 1
         top_entities = ", ".join(e for e, _ in entity_counter.most_common(8))
 
+        # Distinct stories = unique dup-groups (syndicated reprints collapsed).
+        distinct_stories = (
+            int(group["DUP_GROUP"].nunique()) if "DUP_GROUP" in group else len(group)
+        )
+
         rows.append({
             "TOPIC_ID": topic_id,
             "TOPIC_LABEL": topic_label(topic_model, topic_id),
             "TOPIC_DESCRIPTION": description,
             "ARTICLE_COUNT": len(group),
+            "DISTINCT_STORIES": distinct_stories,
             "RISK_IDS": ", ".join(risk_ids),
             "DISTINCT_RISK_COUNT": len(risk_ids),
             "DOMINANT_SENTIMENT": dominant(group.get("SENTIMENT", pd.Series(dtype=str))),
@@ -483,7 +570,7 @@ def filter_recent(df, days):
 
 
 def run(input_path, articles_out, summary_out, days=None,
-        encoded_path=None, risk_id_col=None):
+        encoded_path=None, risk_id_col=None, nr_topics=None):
     input_path = Path(input_path)
     if not input_path.exists():
         print(f"ERROR: input file not found: {input_path}")
@@ -525,28 +612,59 @@ def run(input_path, articles_out, summary_out, days=None,
     n_docs = len(docs)
     rep_docs_map = {}
 
+    # Defaults so the columns always exist.
+    df["DUP_GROUP"] = range(n_docs)
+    df["IS_DUPLICATE"] = False
+
     if n_docs < 3:
         print(f"Only {n_docs} article(s) - too few to cluster meaningfully.")
         df["TOPIC_ID"] = -1
         df["TOPIC_LABEL"] = "Outlier / Unclustered"
         topic_model = _DummyModel()
     else:
-        print(f"Embedding and clustering {n_docs} articles...")
-        topic_model = make_topic_model(n_docs)
-        topics, _ = topic_model.fit_transform(docs)
-        df["TOPIC_ID"] = topics
-        df["TOPIC_LABEL"] = [topic_label(topic_model, t) for t in topics]
+        embedding_model = get_embedding_model()
+        print(f"Embedding {n_docs} articles (cached)...")
+        embeddings = embed_documents(docs, embedding_model)
 
-        # Representative docs per topic - used to give each topic a concrete
-        # example in its description.
-        try:
-            rep_docs_map = topic_model.get_representative_docs()
-        except Exception:
-            rep_docs_map = {}
+        # --- near-duplicate dedup ---
+        quality = pd.to_numeric(df.get("QUALITY_SCORE"), errors="coerce").fillna(1.0).tolist()
+        group_of, reps = dedup_documents(docs, embeddings, quality=quality)
+        df["DUP_GROUP"] = group_of
+        # First occurrence of each group is the kept representative; rest dup.
+        df["IS_DUPLICATE"] = [gi != reps[g] for gi, g in zip(range(n_docs), group_of)]
+        n_groups = len(reps)
+        n_dupes = n_docs - n_groups
+        print(f"Near-duplicate dedup: {n_docs} articles -> {n_groups} distinct "
+              f"stories ({n_dupes} near-duplicates collapsed).")
 
-        n_topics = len({t for t in topics if t != -1})
-        n_outliers = sum(1 for t in topics if t == -1)
-        print(f"Found {n_topics} topic(s); {n_outliers} article(s) left as outliers.")
+        rep_docs = [docs[i] for i in reps]
+        rep_embeddings = embeddings[reps]
+
+        if len(rep_docs) < 3:
+            print("Too few distinct stories to cluster; leaving all as outliers.")
+            df["TOPIC_ID"] = -1
+            df["TOPIC_LABEL"] = "Outlier / Unclustered"
+            topic_model = _DummyModel()
+        else:
+            print(f"Clustering {len(rep_docs)} distinct stories...")
+            topic_model = make_topic_model(len(rep_docs), embedding_model,
+                                           nr_topics=nr_topics)
+            rep_topics, _ = topic_model.fit_transform(rep_docs, embeddings=rep_embeddings)
+
+            # Map group id -> topic, then propagate to every article.
+            group_topic = {g: rep_topics[gi] for gi, g in enumerate(range(len(reps)))}
+            topics = [int(group_topic[g]) for g in group_of]
+            df["TOPIC_ID"] = topics
+            df["TOPIC_LABEL"] = [topic_label(topic_model, t) for t in topics]
+
+            try:
+                rep_docs_map = topic_model.get_representative_docs()
+            except Exception:
+                rep_docs_map = {}
+
+            n_topics = len({t for t in topics if t != -1})
+            n_outliers = sum(1 for t in topics if t == -1)
+            print(f"Found {n_topics} topic(s); {n_outliers} article(s) left as outliers.")
 
     # ---- per-topic summary (adds TOPIC_DESCRIPTION) ----
     summary = summarize_topics(df, topic_model, rep_docs_map=rep_docs_map,
@@ -599,6 +717,10 @@ def parse_args():
     p.add_argument("--encoded", help="Encoded risk-terms CSV (for topic descriptions).")
     p.add_argument("--risk-id-col", dest="risk_id_col",
                    help="Risk ID column in the encoded CSV.")
+    p.add_argument("--nr-topics", dest="nr_topics", default=None,
+                   help="Reduce to this many topics after clustering: an integer "
+                        "(e.g. 60) or 'auto' to let BERTopic merge similar topics. "
+                        "Fewer, cleaner themes; omit to keep all topics.")
     return p.parse_args()
 
 
@@ -631,15 +753,26 @@ def main():
         print("ERROR: provide --risk-type {enterprise|emerging} or --input <csv>")
         sys.exit(1)
 
+    # Parse --nr-topics: "auto", an integer, or None.
+    nr_topics = args.nr_topics
+    if nr_topics is not None and str(nr_topics).lower() != "auto":
+        try:
+            nr_topics = int(nr_topics)
+        except ValueError:
+            print(f"WARNING: --nr-topics '{nr_topics}' is not an int or 'auto'; ignoring.")
+            nr_topics = None
+
     print("#" * 50)
     print("Risk News Topic Clustering (spaCy + sentence-transformers + BERTopic)")
     print(f"Input: {input_path}")
     if args.days:
         print(f"Window: last {args.days} days")
+    if nr_topics:
+        print(f"Topic reduction: nr_topics={nr_topics}")
     print("#" * 50)
 
     run(input_path, articles_out, summary_out, days=args.days,
-        encoded_path=encoded, risk_id_col=risk_id_col)
+        encoded_path=encoded, risk_id_col=risk_id_col, nr_topics=nr_topics)
     print("#" * 50)
     print("Done.")
 

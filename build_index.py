@@ -23,16 +23,12 @@ from pathlib import Path
 KNOWN = {
     "enterprise_risks_report.html": "Enterprise risks — full history clustering, trends, and taxonomy-gap analysis.",
     "emerging_risks_report.html": "Emerging risks — full history clustering, trends, and taxonomy-gap analysis.",
-    "enterprise_risks_report_last30d.html": "Enterprise risks — most recent 30 days only.",
-    "emerging_risks_report_last30d.html": "Emerging risks — most recent 30 days only.",
 }
 
 # Preferred display order (unlisted files sorted after, alphabetically).
 ORDER = [
     "emerging_risks_report.html",
     "enterprise_risks_report.html",
-    "emerging_risks_report_last30d.html",
-    "enterprise_risks_report_last30d.html",
 ]
 
 

@@ -68,13 +68,13 @@ jobs:
 
       - name: Cluster enterprise risk topics
         if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'enterprise'
-        run: python topic_clustering.py --risk-type enterprise
+        run: python topic_clustering.py --risk-type enterprise --nr-topics 60
         env:
           DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
 
       - name: Cluster emerging risk topics
         if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'emerging'
-        run: python topic_clustering.py --risk-type emerging
+        run: python topic_clustering.py --risk-type emerging --nr-topics 60
         env:
           DEBUG_MODE: ${{ github.event.inputs.debug_mode || 'false' }}
 
@@ -88,11 +88,11 @@ jobs:
 
       - name: Score enterprise taxonomy gaps
         if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'enterprise'
-        run: python topic_gaps.py --risk-type enterprise
+        run: python topic_gaps.py --risk-type enterprise --min-quality 0.6
 
       - name: Score emerging taxonomy gaps
         if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'emerging'
-        run: python topic_gaps.py --risk-type emerging
+        run: python topic_gaps.py --risk-type emerging --min-quality 0.6
 
       - name: Build enterprise report
         if: env.RISK_TYPE == 'all' || env.RISK_TYPE == 'enterprise'

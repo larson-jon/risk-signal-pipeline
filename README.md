@@ -37,12 +37,22 @@ with spaCy NLP, and groups them into topics through clustering.
 - runs each article's title + summary through **spaCy** to pull named entities and
   noun-phrase keywords ([spacy.io](https://spacy.io/)),
 - embeds the same text with **sentence-transformers** so semantically similar stories sit
-  close together ([sbert.net](https://sbert.net/)),
-- clusters the embeddings with **BERTopic** to form interpretable topics
-  ([BERTopic docs](https://maartengr.github.io/BERTopic/index.html)).
+  close together ([sbert.net](https://sbert.net/)); embeddings are **cached to disk**
+  (`output/.emb_cache/`) so re-runs only embed new articles,
+- collapses **near-duplicate** syndicated reprints (cosine ≥ `DUP_SIMILARITY`, default 0.93)
+  so a wire story republished across many outlets counts once,
+- clusters the distinct stories with **BERTopic** to form interpretable topics
+  ([BERTopic docs](https://maartengr.github.io/BERTopic/index.html)), optionally reducing to
+  `--nr-topics` themes.
 
 Clustering parameters (UMAP neighbors, HDBSCAN cluster size) scale with the number of
-articles, so the stage works on both small samples and larger production runs.
+articles, so the stage works on both small samples and larger production runs. The per-article
+output adds `DUP_GROUP` / `IS_DUPLICATE`; the summary adds `DISTINCT_STORIES`.
+
+**Options:** `--nr-topics <int|auto>` merges the long tail of tiny topics into fewer, cleaner
+themes (a fixed integer like `60` is recommended over `auto`, which can over-merge into one
+catch-all). `--days N` clusters only the last N days. `DUP_SIMILARITY` (env var) tunes the
+near-duplicate threshold; delete `output/.emb_cache/` to force a full re-embed.
 
 ### How the trend stage works
 
@@ -65,6 +75,26 @@ falls below raw volume. Per topic it also computes a trend slope, recent **momen
 (last 3 months vs the prior 3), and peak month/intensity. The outlier cluster is always
 excluded, and boilerplate / low-signal topics (overwhelmingly neutral and thinly spread)
 are flagged `IS_BENIGN` so they can be dropped from the view.
+
+### How the taxonomy-gap stage works
+
+`topic_gaps.py` looks for **aspects of risk not captured by the current taxonomy**. Every
+topic is tied to a risk only because that risk's search terms surfaced it — so a topic can be
+intense yet fit that risk poorly. It embeds each topic's centroid and every risk's search
+terms, then **calibrates** the fit:
+
+```
+fit_percentile = fraction of risks the assigned-risk fit beats
+gap            = 1 - fit_percentile
+```
+
+A raw cosine gap is inflated for every topic (a topic centroid and a short search phrase embed
+far apart), so calibrating against the all-risk distribution makes the gap *relative*: a high
+gap means several other risks match the topic better than the one that surfaced it. When a
+different risk fits best, it's reported as `BETTER_FIT_RISK`. The `EMERGING_GAP_SCORE` combines
+the calibrated gap, distinct-story intensity, and a recency boost for newly-appearing topics.
+Low-quality topics are dropped via `--min-quality` (default 0.5; 0.6 recommended). Both the
+calibrated `GAP` and the raw `GAP_RAW` are written for comparison.
 
 ## Project layout
 
@@ -154,6 +184,9 @@ python topic_clustering.py --risk-type enterprise
 
 # or emerging
 python topic_clustering.py --risk-type emerging
+
+# reduce the long tail of tiny topics into ~60 cleaner themes (recommended)
+python topic_clustering.py --risk-type enterprise --nr-topics 60
 
 # or point at any sentiment CSV directly
 python topic_clustering.py --input output/enterprise_risks_online_sentiment.csv

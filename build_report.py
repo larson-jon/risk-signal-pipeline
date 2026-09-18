@@ -202,8 +202,12 @@ def build_gaps_payload(gaps_df):
             "riskIds": [x.strip() for x in str(r.get("RISK_IDS", "")).split(",") if x.strip()],
             "bestFitRisk": str(r.get("BEST_FIT_RISK", "") or ""),
             "bestFitRiskLabel": str(r.get("BEST_FIT_RISK_LABEL", "") or ""),
+            "betterFitRisk": str(r.get("BETTER_FIT_RISK", "") or "").replace(".0", ""),
+            "betterFitRiskLabel": str(r.get("BETTER_FIT_RISK_LABEL", "") or ""),
             "fit": round(_clean_num(r.get("FIT"), 0.0), 3),
             "gap": round(_clean_num(r.get("GAP"), 0.0), 3),
+            "gapRaw": round(_clean_num(r.get("GAP_RAW"), 0.0), 3),
+            "fitPercentile": round(_clean_num(r.get("FIT_PERCENTILE"), 0.0), 3),
             "firstSeen": str(r.get("FIRST_SEEN", "") or ""),
             "isNew": bool(r.get("IS_NEW", False)),
             "peakVolume": int(_clean_num(r.get("PEAK_VOLUME"), 0)),
@@ -228,6 +232,7 @@ def build_payload(topics_df, summary_df, risk_map=None, trends=None, gaps=None):
             "label": str(s.get("TOPIC_LABEL", "") or ""),
             "description": str(s.get("TOPIC_DESCRIPTION", "") or ""),
             "count": int(_clean_num(s.get("ARTICLE_COUNT"), 0)),
+            "distinctStories": int(_clean_num(s.get("DISTINCT_STORIES"), s.get("ARTICLE_COUNT", 0))),
             "riskIds": risk_ids,
             "riskCount": int(_clean_num(s.get("DISTINCT_RISK_COUNT"), 0)),
             "sentiment": str(s.get("DOMINANT_SENTIMENT", "") or ""),
@@ -660,7 +665,11 @@ function render() {
             <div class="topic-title">${t.isOutlier ? "Outliers / Unclustered" : highlight(t.label, q)}</div>
             ${t.description ? `<div class="topic-desc">${highlight(t.description, q)}</div>` : ""}
             <div class="topic-meta">Spans ${t.riskCount} risk${t.riskCount === 1 ? "" : "s"} ·
-              avg sentiment ${t.avgCompound} · showing ${t.articles.length} of ${t.count.toLocaleString()} articles</div>
+              avg sentiment ${t.avgCompound} ·
+              ${t.distinctStories && t.distinctStories < t.count
+                ? `${t.distinctStories.toLocaleString()} distinct stories (${t.count.toLocaleString()} articles)`
+                : `${t.count.toLocaleString()} articles`} ·
+              showing ${t.articles.length}</div>
             <div class="chips">${risks}${kw}</div>
           </div>
           <div class="badges">
@@ -838,20 +847,25 @@ function renderGaps() {
   const rows = GAPS.slice(0, 40).map((t, i) => {
     const risks = t.riskIds.map(r => `<span class="chip risk"><b>R${esc(r)}</b> ${esc(riskName(r))}</span>`).join("");
     const newBadge = t.isNew ? `<span class="pill Negative" title="First seen ${esc(t.firstSeen)}">NEW</span>` : "";
-    // gap bar (0..1)
+    // calibrated gap bar (0..1) = 1 - percentile fit vs all risks
     const pct = Math.round(t.gap * 100);
+    // Callout when a *different* risk fits this topic better than the ones that surfaced it.
+    const better = t.betterFitRisk
+      ? `<div class="topic-meta" style="color:var(--neg)">Fits <b>R${esc(t.betterFitRisk)} ${esc(t.betterFitRiskLabel)}</b> better than the risk(s) that surfaced it — possible taxonomy gap.</div>`
+      : "";
     return `<div class="risk-block">
       <div style="display:flex; justify-content:space-between; gap:12px; align-items:start">
         <div>
           <div class="topic-title">#${i + 1}. ${esc(t.label)} ${newBadge}</div>
           ${t.description ? `<div class="topic-desc">${esc(t.description)}</div>` : ""}
+          ${better}
           <div class="topic-meta">
-            Surfaced by ${risks} · best semantic fit: <b>R${esc(t.bestFitRisk)} ${esc(t.bestFitRiskLabel)}</b>
-            (fit ${t.fit.toFixed(2)}) · peak ${t.peakVolume}/mo · ${t.totalArticles} articles ·
+            Surfaced by ${risks} · best assigned-risk fit: <b>R${esc(t.bestFitRisk)} ${esc(t.bestFitRiskLabel)}</b>
+            · peak ${t.peakVolume} distinct stories/mo · ${t.totalArticles} articles ·
             quality ${t.quality.toFixed(2)} · first seen ${esc(t.firstSeen)}
           </div>
           <div class="gapbar"><div class="gapbar-fill" style="width:${pct}%"></div>
-            <span class="gapbar-label">gap ${t.gap.toFixed(2)}</span></div>
+            <span class="gapbar-label">gap ${t.gap.toFixed(2)} (raw ${t.gapRaw.toFixed(2)})</span></div>
         </div>
         <div class="badges"><div class="count">${t.score.toFixed(1)}</div>
           <span class="l" style="color:var(--muted); font-size:11px">GAP SCORE</span></div>
@@ -897,12 +911,15 @@ function renderMethod() {
     (organizations, people, places, groups, laws) and cleaned noun-phrase keywords. These feed
     the topic labels and let you search by entity.</p>
 
-    <h3>4 · Embedding &amp; clustering</h3>
+    <h3>4 · Embedding, dedup &amp; clustering</h3>
     <p>Title + summary is embedded with the <code>all-MiniLM-L6-v2</code> sentence-transformer,
-    so semantically similar stories sit close together. <b>BERTopic</b> then clusters the
-    embeddings into topics using c-TF-IDF for keywords. Clustering parameters scale with corpus
-    size. Each topic gets a readable description built from its keywords, a representative
-    headline, and the risks it touches.</p>
+    so semantically similar stories sit close together. Embeddings are cached on disk, so
+    re-runs only embed new articles. <b>Near-duplicate detection</b> then collapses syndicated
+    reprints (cosine similarity ≥ 0.93): one representative per story goes into clustering, and
+    the assigned topic propagates back to every copy — so a wire story republished across 20
+    outlets counts as one story, not twenty. <b>BERTopic</b> clusters the representatives using
+    c-TF-IDF for keywords; the topic count can be reduced to merge the long tail into fewer,
+    cleaner themes. Topic cards show <b>distinct stories</b> alongside raw article counts.</p>
 
     <h3>5 · Content quality</h3>
     <p>Each article is scored 0–1 on how substantive it is. Press-release / wire sources,
@@ -921,20 +938,24 @@ intensity = monthly_volume × severity</pre>
 
     <h3>7 · Candidate gaps</h3>
     <p>The goal is to surface aspects of risk the current taxonomy may not capture. For each
-    topic we embed its centroid and its assigned risks' search terms, then measure:</p>
-    <pre>fit = max cosine similarity(topic centroid, risk's search terms)
-gap = 1 − fit</pre>
-    <p>A topic that is intense and recent but has a <b>high gap</b> — poorly explained by the
-    risk that surfaced it — is a candidate blind spot. Scores combine gap, intensity, and a
-    recency boost for topics first seen in the last few months. ${gapsNote} Fit values are
-    relative (a topic centroid and a short search phrase embed at systematically lower
-    similarity), so the <i>ranking</i> is what matters, not an absolute threshold.</p>
+    topic we embed its centroid and every risk's search terms, then compare how well the topic
+    fits its <i>assigned</i> risk against how well it fits <i>all</i> risks:</p>
+    <pre>fit_percentile = fraction of risks the assigned-risk fit beats
+gap            = 1 − fit_percentile     (calibrated)</pre>
+    <p>Because a topic centroid and a short search phrase embed at systematically lower
+    similarity, the raw cosine gap is inflated for every topic. Calibrating against the
+    all-risk distribution makes the gap <b>relative</b>: a high gap means several other risks
+    match the topic better than the one that surfaced it — a stronger blind-spot signal. When a
+    different risk fits best, it's called out explicitly. Scores combine the calibrated gap,
+    intensity (distinct-story volume), and a recency boost for newly-appearing topics. Both the
+    calibrated and raw gap are shown. ${gapsNote}</p>
 
     <h3>Reading the results</h3>
     <p>Use <b>Topics</b> to browse and search all clusters, <b>Trends over time</b> to see which
     themes are growing per risk, and <b>Candidate gaps</b> for the ranked list of possibly
     uncovered risk aspects. Known limitations: topic labels are auto-generated and occasionally
-    misleading; heavily syndicated stories can inflate a topic's volume.</p>
+    misleading; near-duplicate detection collapses most syndication but very lightly reworded
+    reprints may still slip through.</p>
 
     <p class="sub">Tools: sentence-transformers (sbert.net), BERTopic
     (maartengr.github.io/BERTopic), spaCy (spacy.io), VADER, newspaper3k.</p>

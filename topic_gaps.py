@@ -31,7 +31,11 @@ import pandas as pd
 
 # Reuse the offline-aware model resolver and risk-term decoder from the
 # clustering stage so embeddings live in the same vector space.
-from topic_clustering import resolve_embedding_model, load_risk_map
+from topic_clustering import resolve_embedding_model, load_risk_map, EMBEDDING_MODEL
+
+# Cache namespace - must match the name topic_clustering uses so both stages
+# share the same on-disk embedding cache.
+_EMB_NAME = EMBEDDING_MODEL
 
 # A topic is "new" if it first appears within this many months of the data end.
 NEW_WINDOW_MONTHS = 3
@@ -96,40 +100,69 @@ def build_gaps(topics_df, risk_map, model, min_quality=0.0):
         print("WARNING: no parseable dates; novelty scoring will be limited.")
     recent_cutoff = set(all_months[-NEW_WINDOW_MONTHS:]) if all_months else set()
 
-    # ---- embed each risk's search terms ----
-    # risk_id -> matrix of term embeddings
-    risk_ids = sorted(risk_map.keys(), key=lambda v: (len(v), v))
-    risk_term_vecs = {}
-    for rid in risk_ids:
-        terms = risk_map[rid]["terms"]
-        if not terms:
-            continue
-        vecs = model.encode(terms, convert_to_numpy=True, normalize_embeddings=True,
-                            show_progress_bar=False)
-        risk_term_vecs[rid] = vecs
-    print(f"Embedded search terms for {len(risk_term_vecs)} risks.")
+    # ---- embed each risk's search terms (one per-risk representative vector) ----
+    # We reduce each risk to a single mean term-vector so a topic's similarity
+    # to every risk is directly comparable; this is what calibration needs.
+    from embedding_cache import encode_cached
 
-    # ---- topic centroids ----
-    rows = []
+    risk_ids = sorted(risk_map.keys(), key=lambda v: (len(v), v))
+    all_terms, term_owner = [], []
+    for rid in risk_ids:
+        for t in risk_map[rid]["terms"]:
+            all_terms.append(t)
+            term_owner.append(rid)
+    term_vecs = encode_cached(model, all_terms, model_name=_EMB_NAME, verbose=False)
+
+    risk_vec = {}          # rid -> mean term vector (normalized)
+    risk_term_vecs = {}    # rid -> matrix of its term vectors (for best-term sim)
+    for rid in risk_ids:
+        idx = [i for i, o in enumerate(term_owner) if o == rid]
+        if not idx:
+            continue
+        mat = term_vecs[idx]
+        risk_term_vecs[rid] = mat
+        mv = mat.mean(axis=0)
+        risk_vec[rid] = mv / (np.linalg.norm(mv) + 1e-9)
+    ordered_rids = [r for r in risk_ids if r in risk_vec]
+    risk_matrix = np.vstack([risk_vec[r] for r in ordered_rids]) if ordered_rids else None
+    print(f"Embedded search terms for {len(risk_vec)} risks.")
+
+    # ---- topic centroids (embedded via the shared cache) ----
     topic_ids = sorted(df["TOPIC_ID"].unique())
     print(f"Scoring {len(topic_ids)} topics...")
+
+    # Build all centroid docs first so the cache embeds them in one batch.
+    centroid_docs, centroid_tids = [], []
+    per_topic_texts = {}
     for tid in topic_ids:
         g = df[df["TOPIC_ID"] == tid]
-        # sample docs for the centroid
-        sample = g.head(CENTROID_SAMPLE)
-        texts = [_doc_text(r) for _, r in sample.iterrows() if _doc_text(r)]
+        texts = [_doc_text(r) for _, r in g.head(CENTROID_SAMPLE).iterrows() if _doc_text(r)]
         if not texts:
             continue
-        vecs = model.encode(texts, convert_to_numpy=True, normalize_embeddings=True,
-                            show_progress_bar=False)
-        centroid = vecs.mean(axis=0)
-        centroid /= (np.linalg.norm(centroid) + 1e-9)
+        per_topic_texts[tid] = texts
+        centroid_docs.extend(texts)
+        centroid_tids.extend([tid] * len(texts))
+    doc_vecs = encode_cached(model, centroid_docs, model_name=_EMB_NAME, verbose=True)
+
+    # Aggregate per-topic centroids from the embedded docs.
+    centroids = {}
+    for tid in per_topic_texts:
+        idx = [i for i, t in enumerate(centroid_tids) if t == tid]
+        c = doc_vecs[idx].mean(axis=0)
+        centroids[tid] = c / (np.linalg.norm(c) + 1e-9)
+
+    rows = []
+    for tid in topic_ids:
+        if tid not in centroids:
+            continue
+        g = df[df["TOPIC_ID"] == tid]
+        centroid = centroids[tid]
 
         topic_risks = sorted({str(r) for r in g["RISK_ID"].dropna()
                               .apply(lambda v: str(v).replace(".0", ""))})
 
-        # fit = best similarity to ANY term of ANY assigned risk
-        best_fit, best_risk = 0.0, ""
+        # Raw fit = best similarity to ANY term of ANY assigned risk.
+        best_fit, best_risk = -1.0, ""
         for rid in topic_risks:
             tv = risk_term_vecs.get(rid)
             if tv is None:
@@ -137,7 +170,28 @@ def build_gaps(topics_df, risk_map, model, min_quality=0.0):
             sim = float(np.max(centroid @ tv.T))
             if sim > best_fit:
                 best_fit, best_risk = sim, rid
-        gap = round(1.0 - best_fit, 4)
+        best_fit = max(0.0, best_fit)
+        gap_raw = round(1.0 - best_fit, 4)
+
+        # --- CALIBRATION ---
+        # Compare the topic's similarity to its assigned risk against its
+        # similarity to ALL risks. If many risks match better, the topic fits
+        # its taxonomy slot poorly *relative to the alternatives* - a stronger
+        # signal than a low absolute cosine (which is inflated for every topic
+        # because centroids and short phrases embed far apart).
+        fit_percentile, gap_cal, better_risk, better_label = 1.0, 0.0, "", ""
+        if risk_matrix is not None and topic_risks:
+            all_sims = centroid @ risk_matrix.T           # sim to every risk
+            assigned_idx = [i for i, r in enumerate(ordered_rids) if r in topic_risks]
+            assigned_best = float(np.max(all_sims[assigned_idx])) if assigned_idx else 0.0
+            # percentile of assigned-risk fit within the all-risk distribution
+            fit_percentile = float(np.mean(all_sims <= assigned_best))
+            gap_cal = round(1.0 - fit_percentile, 4)
+            # which risk (if any) fits better than the assigned one
+            top_i = int(np.argmax(all_sims))
+            if ordered_rids[top_i] not in topic_risks:
+                better_risk = ordered_rids[top_i]
+                better_label = risk_map.get(better_risk, {}).get("label", "")
 
         # novelty
         months_present = sorted(g["month"].dropna().unique())
@@ -145,10 +199,18 @@ def build_gaps(topics_df, risk_map, model, min_quality=0.0):
         is_new = first_seen in recent_cutoff
         recency_boost = 1.5 if is_new else 1.0
 
-        # intensity proxy: peak monthly volume (kept simple for the prototype)
-        peak_volume = int(g.groupby("month").size().max()) if months_present else len(g)
+        # intensity proxy: peak monthly DISTINCT-STORY volume when available,
+        # else peak monthly article volume.
+        if "DUP_GROUP" in g and months_present:
+            peak_volume = int(g.groupby("month")["DUP_GROUP"].nunique().max())
+        elif months_present:
+            peak_volume = int(g.groupby("month").size().max())
+        else:
+            peak_volume = len(g)
         avg_quality = round(float(g["QUALITY_SCORE"].mean()), 3)
-        emerging_gap = round(gap * float(np.log1p(peak_volume)) * recency_boost, 4)
+
+        # Score now uses the CALIBRATED gap.
+        emerging_gap = round(gap_cal * float(np.log1p(peak_volume)) * recency_boost, 4)
 
         rows.append({
             "TOPIC_ID": tid,
@@ -158,7 +220,11 @@ def build_gaps(topics_df, risk_map, model, min_quality=0.0):
             "BEST_FIT_RISK": best_risk,
             "BEST_FIT_RISK_LABEL": risk_map.get(best_risk, {}).get("label", ""),
             "FIT": round(best_fit, 4),
-            "GAP": gap,
+            "GAP_RAW": gap_raw,
+            "FIT_PERCENTILE": round(fit_percentile, 4),
+            "GAP": gap_cal,
+            "BETTER_FIT_RISK": better_risk,
+            "BETTER_FIT_RISK_LABEL": better_label,
             "FIRST_SEEN": first_seen,
             "IS_NEW": is_new,
             "PEAK_VOLUME": peak_volume,
@@ -214,12 +280,15 @@ def run(topics_path, encoded_path, risk_id_col, out_path, min_quality=0.5):
     print(f"Wrote gap scores -> {out_path}")
 
     top = gaps.head(12)
-    print("\nTop candidate taxonomy gaps (intense + recent + poor risk fit):")
+    print("\nTop candidate taxonomy gaps (calibrated gap: fits assigned risk poorly")
+    print("relative to other risks; intense + recent weigh up the score):")
     for _, r in top.iterrows():
         newflag = " [NEW]" if r["IS_NEW"] else ""
+        better = ""
+        if str(r.get("BETTER_FIT_RISK", "")):
+            better = f" -> fits R{r['BETTER_FIT_RISK']} ({str(r['BETTER_FIT_RISK_LABEL'])[:24]}) better"
         print(f"  gap {r['GAP']:.2f} score {r['EMERGING_GAP_SCORE']:.2f}{newflag}  "
-              f"[{r['TOPIC_ID']}] {str(r['TOPIC_LABEL'])[:44]}  "
-              f"(best-fit risk {r['BEST_FIT_RISK']}: {str(r['BEST_FIT_RISK_LABEL'])[:28]})")
+              f"[{r['TOPIC_ID']}] {str(r['TOPIC_LABEL'])[:40]}{better}")
 
 
 def parse_args():
