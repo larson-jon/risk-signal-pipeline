@@ -71,6 +71,25 @@ LATEST_URL = "https://newsdata.io/api/1/latest"
 # naming any specific risk. newsdata.io supports up to 5 categories (Free/Basic).
 DEFAULT_CATEGORIES = ["business", "politics", "technology", "world"]
 
+# Risk-LEXICON queries: the *language of risk itself*, so we catch risk-shaped
+# stories regardless of subject - without pre-naming any topic. Phrases are
+# favored over bare words ("regulators warn" >> "risk") because single risk
+# words appear constantly in benign contexts; phrases are far higher-precision.
+# Each entry is one newsdata.io `q` search. Tuned toward finance/regulatory
+# emergence. `q` is capped at 100 chars on the free plan - all are well under.
+RISK_LEXICON = [
+    # emergence / novelty framing
+    "emerging risk", "systemic risk", "unprecedented", "first-of-its-kind",
+    "novel threat", "unintended consequences", "regulatory loophole",
+    "unregulated", "regulatory gap",
+    # authority raising an alarm
+    "regulators warn", "watchdog warns", "SEC warns", "warns of risk",
+    "flagged as a risk", "under scrutiny", "calls for regulation",
+    # trouble / disruption framing
+    "growing threat", "mounting concern", "market disruption",
+    "vulnerability exposed", "systemic threat",
+]
+
 OUTPUT_CSV = "output/discovery_news.csv"
 
 USER_AGENTS = [
@@ -412,6 +431,106 @@ def fetch_latest(categories, country, language, prioritydomain, per_category_pag
     _save(all_rows)
 
 
+def fetch_lexicon(lexicon, country, language, prioritydomain, per_query_pages,
+                  tag="LEXICON"):
+    """Risk-lexicon discovery: query /latest with risk-INDICATOR phrases as `q`.
+
+    Rather than browsing categories, this searches the *language of risk*
+    ("regulators warn", "emerging risk", ...) so we surface risk-shaped stories
+    on any subject - including ones outside the current taxonomy. Each phrase is
+    one search; results accumulate + dedup into the shared discovery corpus.
+    """
+    api_key = os.getenv("NEWS_DATA_API_KEY")
+    if not api_key:
+        print("ERROR: NEWS_DATA_API_KEY not set (put it in .env or the environment).")
+        sys.exit(1)
+
+    print("#" * 60)
+    print("RISK DISCOVERY FETCH (risk-lexicon queries, /latest 48h)")
+    print(f"  lexicon terms : {len(lexicon)}")
+    print(f"  country       : {country} | language: {language} | prioritydomain: {prioritydomain}")
+    print(f"  pages/term    : up to {per_query_pages}")
+    print("#" * 60)
+
+    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+    try:
+        from content_quality import quality_score
+    except Exception:
+        quality_score = None
+
+    analyzer = SentimentIntensityAnalyzer()
+    config = _make_config()
+    if not _HAVE_NEWSPAPER:
+        print("  note: newspaper3k not available - using API description as summary.")
+    if VERIFY_SSL and VERIFY_SSL is not True:
+        os.environ["REQUESTS_CA_BUNDLE"] = VERIFY_SSL
+        os.environ["SSL_CERT_FILE"] = VERIFY_SSL
+
+    seen_links = set()
+    all_rows = []
+    global_index = 0
+    requests_made = 0
+
+    for phrase in lexicon:
+        next_page = None
+        for _page in range(per_query_pages):
+            params = {
+                "apikey": api_key, "q": phrase, "country": country,
+                "language": language,
+            }
+            if prioritydomain:
+                params["prioritydomain"] = prioritydomain
+            if next_page:
+                params["page"] = next_page
+            try:
+                resp = requests.get(LATEST_URL, params=params, timeout=30, verify=VERIFY_SSL)
+                requests_made += 1
+            except Exception as e:
+                print(f"  request error ('{phrase}'): {e}")
+                break
+            if resp.status_code != 200:
+                print(f"  api {resp.status_code} ('{phrase}'): {resp.text[:140]}")
+                break
+            data = resp.json()
+            results = data.get("results", []) or []
+            print(f"  '{phrase}' p{_page+1}: {len(results)} articles")
+            for item in results:
+                url = item.get("link") or ""
+                if not url or url.lower().strip() in seen_links:
+                    continue
+                seen_links.add(url.lower().strip())
+                title = item.get("title") or ""
+                published = item.get("pubDate", "") or ""
+                source = item.get("source_id") or get_source_name(url)
+                summary, keywords = _parse_article(url, config)
+                if not summary:
+                    summary = str(item.get("description") or item.get("content") or "")
+                compound, label = _score_sentiment(analyzer, f"{title} {summary}")
+                global_index += 1
+                row = {
+                    "RISK_ID": -1, "SEARCH_TERM_ID": tag,
+                    "GOOGLE_INDEX": global_index, "TITLE": title, "LINK": url,
+                    "PUBLISHED_DATE": published, "SUMMARY": summary[:500],
+                    "KEYWORDS": keywords, "SENTIMENT_COMPOUND": compound,
+                    "SENTIMENT": label, "SOURCE": source,
+                    "CATEGORY": f"lex:{phrase}", "QUALITY_SCORE": 0,
+                }
+                if quality_score:
+                    try:
+                        row["QUALITY_SCORE"] = quality_score(row)
+                    except Exception:
+                        pass
+                all_rows.append(row)
+            next_page = data.get("nextPage")
+            if not next_page:
+                break
+            time.sleep(1)
+
+    print(f"\nFetched {len(all_rows)} unique articles in {requests_made} requests "
+          f"across {len(lexicon)} lexicon terms.")
+    _save(all_rows)
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="Broad un-keyworded news fetch for risk discovery.")
     p.add_argument("--months", type=float, default=4.0, help="Lookback window in months (default 4).")
@@ -433,8 +552,12 @@ def parse_args():
     p.add_argument("--latest", action="store_true",
                    help="Free-tier mode: fetch the past 48h from /latest by category "
                         "(no archive). Accumulates over repeated runs.")
+    p.add_argument("--lexicon", action="store_true",
+                   help="Risk-lexicon mode: query /latest with risk-indicator phrases "
+                        "(the language of risk) instead of categories, to surface "
+                        "risk-shaped stories on any subject.")
     p.add_argument("--pages", type=int, default=1,
-                   help="Pages per category in --latest mode (10 articles/page free).")
+                   help="Pages per category/term (10 articles/page on free tier).")
     return p.parse_args()
 
 
@@ -517,6 +640,12 @@ def main():
         probe()
         return
     categories = [c.strip() for c in args.categories.split(",") if c.strip()][:5]
+    if args.lexicon:
+        fetch_lexicon(
+            lexicon=RISK_LEXICON, country=args.country, language=args.language,
+            prioritydomain=args.prioritydomain, per_query_pages=args.pages,
+        )
+        return
     if args.latest:
         fetch_latest(
             categories=categories, country=args.country, language=args.language,

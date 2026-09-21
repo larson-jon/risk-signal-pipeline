@@ -1,10 +1,13 @@
 name: Risk Discovery Fetch
 
-# Broad, un-keyworded news collection for discovering risks OUTSIDE the current
-# taxonomy. Runs twice a day and rotates category sets (newsdata.io allows at
-# most 5 categories per request), so coverage broadens over time. The free-tier
-# /latest endpoint only spans the past 48h, so the corpus accumulates forward
-# across runs (append + dedup into output/discovery_news.csv).
+# News collection for discovering risks OUTSIDE the current taxonomy, via two
+# complementary methods each run:
+#   1. Broad category fetch (rotating category sets, <=5 per request).
+#   2. Risk-lexicon fetch (queries the language of risk: "regulators warn",
+#      "emerging risk", ... to catch risk-shaped stories on any subject).
+# Runs twice a day; the free-tier /latest endpoint only spans the past 48h, so
+# the corpus accumulates forward across runs (append + dedup into
+# output/discovery_news.csv).
 
 on:
   schedule:
@@ -70,6 +73,16 @@ jobs:
         run: >-
           python discover_fetch.py --latest
           --categories "${{ steps.pick.outputs.categories }}"
+          --pages "${{ github.event.inputs.pages || '10' }}"
+        env:
+          NEWS_DATA_API_KEY: ${{ secrets.NEWS_DATA_API_KEY }}
+
+      - name: Fetch risk-lexicon news (last 48h)
+        # Complements the category fetch: queries the *language of risk*
+        # ("regulators warn", "emerging risk", ...) to surface risk-shaped
+        # stories on any subject. Feeds the same discovery corpus (deduped).
+        run: >-
+          python discover_fetch.py --lexicon
           --pages "${{ github.event.inputs.pages || '10' }}"
         env:
           NEWS_DATA_API_KEY: ${{ secrets.NEWS_DATA_API_KEY }}
