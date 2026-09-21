@@ -1,5 +1,8 @@
 name: Test Decoding and Commit Outputs
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:  # manual trigger
 
@@ -7,10 +10,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo with PAT
+      - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,8 +31,6 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions@users.noreply.github.com"
-          git add output/*.csv
+          git add --ignore-errors output/*_online_sentiment.csv || true
           git commit -m "Update sentiment CSVs - $(date +'%Y-%m-%d %H:%M')" || echo "No changes to commit"
           git push origin main || echo "Push failed"
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}

@@ -114,6 +114,12 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions@users.noreply.github.com"
-          git add output/*.csv reports/*.html
+          # Commit only the tracked source CSVs (the derivative topics/trends/
+          # gaps CSVs are gitignored and regenerated each run) plus the reports.
+          # --ignore-errors lets add skip anything ignored without failing.
+          git add --ignore-errors \
+            output/*_online_sentiment.csv \
+            output/discovery_news.csv \
+            reports/ || true
           git commit -m "Update sentiment data - $(date +'%Y-%m-%d %H:%M')" || echo "No changes to commit"
           git push origin main || echo "No changes to push"

@@ -15,7 +15,9 @@
     font: 14px/1.5 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
   header { padding: 20px 24px; border-bottom: 1px solid var(--border);
     background: linear-gradient(180deg, #16212f, #0f1720); position: sticky; top: 0; z-index: 5; }
-  h1 { margin: 0 0 4px; font-size: 20px; }
+  h1 { margin: 4px 0 4px; font-size: 20px; }
+  a.back { color: var(--accent); text-decoration: none; font-size: 13px; }
+  a.back:hover { text-decoration: underline; }
   .sub { color: var(--muted); font-size: 13px; }
   .stats { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; }
   .stat { background: var(--panel); border: 1px solid var(--border);
@@ -108,6 +110,7 @@
 </head>
 <body>
 <header>
+  <a class="back" href="index.html">← Back to reports</a>
   <h1>Enterprise Risk — Topic Explorer</h1>
   <div class="sub">Topics discovered with sentence-transformers + BERTopic, enriched with spaCy. Click a topic to see its articles.</div>
   <div class="stats" id="stats"></div>

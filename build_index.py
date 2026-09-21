@@ -95,16 +95,90 @@ def _card(r):
     </a>"""
 
 
-def build_html(reports):
+def _discovery_card(discovery_file):
+    """A distinct card linking to the discovery explainer page."""
+    return f"""    <a class="card discovery" href="{discovery_file}">
+      <div class="card-title">Risk Discovery — finding risks off the list</div>
+      <div class="card-desc">How we collect broad, un-keyworded news to surface emerging
+      risks the current taxonomy doesn't cover yet.</div>
+      <div class="card-meta">What we're collecting &amp; why</div>
+      <div class="card-go">Learn more →</div>
+    </a>"""
+
+
+def build_html(reports, discovery_file=None):
     cards = "\n".join(_card(r) for r in reports) or \
         '<div class="empty">No reports found. Run build_report.py first.</div>'
+    if discovery_file:
+        cards += "\n" + _discovery_card(discovery_file)
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
     return _TEMPLATE.replace("__CARDS__", cards).replace("__GENERATED__", generated)
 
 
+def _discovery_stats():
+    """Live stats about the discovery corpus, if it exists."""
+    path = Path("output/discovery_news.csv")
+    stats = {"exists": path.exists(), "total": 0, "by_method": {}, "sources": 0,
+             "latest": ""}
+    if not path.exists():
+        return stats
+    try:
+        import pandas as pd
+        df = pd.read_csv(path)
+        stats["total"] = len(df)
+        stats["sources"] = int(df["SOURCE"].nunique()) if "SOURCE" in df else 0
+        if "SEARCH_TERM_ID" in df:
+            stats["by_method"] = df["SEARCH_TERM_ID"].value_counts().to_dict()
+        if "PUBLISHED_DATE" in df:
+            d = pd.to_datetime(df["PUBLISHED_DATE"], errors="coerce").dropna()
+            if len(d):
+                stats["latest"] = str(d.max())[:10]
+    except Exception:
+        pass
+    return stats
+
+
+def build_discovery_page(out_dir):
+    """Write reports/discovery.html explaining the risk-discovery collection."""
+    try:
+        from discover_fetch import RISK_LEXICON, DEFAULT_CATEGORIES
+    except Exception:
+        RISK_LEXICON, DEFAULT_CATEGORIES = [], []
+
+    s = _discovery_stats()
+    generated = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    lex_chips = "".join(f'<span class="chip">{t}</span>' for t in RISK_LEXICON)
+    cat_chips = "".join(f'<span class="chip">{c}</span>' for c in DEFAULT_CATEGORIES)
+
+    if s["exists"]:
+        method_bits = " · ".join(f"{v:,} {k.lower()}" for k, v in s["by_method"].items())
+        corpus = (f'<div class="statline"><b>{s["total"]:,}</b> articles collected so far'
+                  f' · {s["sources"]:,} distinct sources'
+                  f'{" · latest " + s["latest"] if s["latest"] else ""}</div>'
+                  f'<div class="statline muted">By method: {method_bits}</div>')
+    else:
+        corpus = ('<div class="statline muted">No discovery corpus yet — it builds up '
+                  'as the scheduled fetches run.</div>')
+
+    html = _DISCOVERY_TEMPLATE
+    html = html.replace("__LEX_CHIPS__", lex_chips or "<span class='muted'>(none)</span>")
+    html = html.replace("__CAT_CHIPS__", cat_chips or "<span class='muted'>(none)</span>")
+    html = html.replace("__LEX_COUNT__", str(len(RISK_LEXICON)))
+    html = html.replace("__CORPUS__", corpus)
+    html = html.replace("__GENERATED__", generated)
+
+    out = Path(out_dir) / "discovery.html"
+    out.write_text(html, encoding="utf-8")
+    print(f"Wrote discovery page -> {out}")
+    return out
+
+
 def run(report_dir, out_path):
     reports = collect(report_dir)
-    html = build_html(reports)
+    # Build the discovery explainer page first so the index can link to it.
+    disco = build_discovery_page(report_dir)
+    html = build_html(reports, discovery_file=disco.name if disco else None)
     out = Path(out_path)
     out.parent.mkdir(exist_ok=True)
     out.write_text(html, encoding="utf-8")
@@ -155,6 +229,8 @@ _TEMPLATE = r"""<!DOCTYPE html>
   .card-meta { font-size: 13px; color: var(--text); }
   .card-cov { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
   .card-go { color: var(--accent); font-size: 13px; font-weight: 600; margin-top: 14px; }
+  .card.discovery { border-color: #3a5a3a; background: linear-gradient(180deg, #16241a, var(--panel)); }
+  .card.discovery:hover { border-color: #3fb950; }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
   .how { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
     padding: 18px 20px; margin-top: 24px; color: var(--muted); font-size: 13.5px; max-width: 70ch; }
@@ -181,6 +257,109 @@ __CARDS__
     (topics that are intense and recent but fit their risk poorly — possible blind spots), and
     <b>How this was built</b> (the full methodology).
   </div>
+</main>
+<footer>Generated __GENERATED__ · self-contained HTML, no external dependencies.</footer>
+</body>
+</html>
+"""
+
+
+_DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk Discovery — What We're Collecting</title>
+<style>
+  :root {
+    --bg: #0f1720; --panel: #172232; --panel2: #1e2c40; --text: #e6edf5;
+    --muted: #93a4bb; --border: #2a3a52; --accent: #58a6ff; --green: #3fb950;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.65 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  header { padding: 34px 24px 20px; max-width: 820px; margin: 0 auto; }
+  a.back { color: var(--accent); text-decoration: none; font-size: 13px; }
+  a.back:hover { text-decoration: underline; }
+  h1 { margin: 12px 0 6px; font-size: 25px; }
+  h2 { font-size: 17px; margin: 26px 0 8px; color: var(--accent); }
+  .lede { color: var(--muted); max-width: 72ch; }
+  main { max-width: 820px; margin: 0 auto; padding: 4px 24px 60px; }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 22px; margin-top: 16px; }
+  p { max-width: 72ch; }
+  .statline { font-size: 15px; margin: 4px 0; }
+  .statline.muted, .muted { color: var(--muted); font-size: 13.5px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 3px 10px; font-size: 12.5px; }
+  .method { border-left: 3px solid var(--green); padding-left: 14px; margin: 14px 0; }
+  .method h3 { margin: 0 0 4px; font-size: 15px; }
+  code { background: var(--panel2); border-radius: 4px; padding: 1px 6px; font-size: 13px; }
+  .note { color: var(--muted); font-size: 13px; }
+  footer { max-width: 820px; margin: 0 auto; padding: 20px 24px 40px;
+    color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="index.html">← Back to reports</a>
+  <h1>Risk Discovery: finding risks that aren't on our list</h1>
+  <p class="lede">The main pipeline only ever sees news that matched one of our existing risk
+  search terms — so by design it can't reveal a risk we never thought to search for. Risk
+  discovery closes that blind spot: it collects a broad stream of news chosen <i>without</i>
+  reference to our risk list, so we can later surface coherent, significant themes that sit far
+  from every risk we currently track.</p>
+</header>
+<main>
+
+  <div class="panel">
+    <h2>What we're collecting</h2>
+    __CORPUS__
+    <p class="note">Because the news plan serves only the last ~48 hours per request, the corpus
+    accumulates forward over time — each scheduled run adds new, de-duplicated stories rather
+    than reaching back into history.</p>
+  </div>
+
+  <h2>Two collection methods</h2>
+  <p>Each scheduled run gathers news two complementary ways, both un-tied to our risk list:</p>
+
+  <div class="panel">
+    <div class="method">
+      <h3>1 · Broad category sweep</h3>
+      <p>Pulls top-tier news across broad categories with <b>no keyword filter at all</b> — a
+      wide net for whatever is prominent. Category sets rotate across runs (the news API allows
+      up to 5 per request), so coverage widens over time.</p>
+      <div class="chips">__CAT_CHIPS__</div>
+    </div>
+
+    <div class="method">
+      <h3>2 · Risk-lexicon search (__LEX_COUNT__ phrases)</h3>
+      <p>Searches for the <b>language of risk itself</b> — phrases that tend to describe a
+      risk becoming a concern, regardless of subject. This catches risk-shaped stories a plain
+      category sweep would bury. Phrases are favored over bare words (<code>"regulators warn"</code>
+      is far more precise than <code>"risk"</code>).</p>
+      <div class="chips">__LEX_CHIPS__</div>
+    </div>
+  </div>
+
+  <h2>How a discovered risk is identified</h2>
+  <p>The collected stories are cleaned for quality, de-duplicated (including near-identical
+  syndicated reprints), and clustered into themes. Each theme is then scored for
+  <b>novelty</b> — how far it sits from <i>every</i> existing enterprise and emerging risk,
+  measured by semantic similarity:</p>
+  <div class="panel">
+    <p style="margin:0"><code>novelty = 1 − (closest match to any existing risk)</code></p>
+    <p class="note" style="margin:8px 0 0">A theme that is high-volume, recent, good quality, and
+    far from all known risks is a candidate risk the taxonomy may not yet cover. The nearest
+    existing risk is reported alongside each candidate, so it's clear whether something is
+    genuinely new or just an adjacent angle on a known risk.</p>
+  </div>
+
+  <p class="note" style="margin-top:20px">Discovery is intentionally a wide, lower-precision net:
+  it surfaces a ranked shortlist for human review, not a finished answer. Precision improves as
+  the corpus accumulates across more days.</p>
+
 </main>
 <footer>Generated __GENERATED__ · self-contained HTML, no external dependencies.</footer>
 </body>
