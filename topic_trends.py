@@ -140,6 +140,7 @@ def build_trends(articles_df, drop_benign=False):
 
         meta_rows.append({
             "TOPIC_ID": tid,
+            "TOPIC_TITLE": _first(g, "TOPIC_TITLE"),
             "TOPIC_LABEL": _first(g, "TOPIC_LABEL"),
             "TOPIC_DESCRIPTION": _first(g, "TOPIC_DESCRIPTION"),
             "RISK_IDS": ", ".join(risk_ids),

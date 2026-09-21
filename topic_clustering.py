@@ -378,6 +378,71 @@ def _humanize_keywords(keywords):
     return ", ".join(keywords[:-1]) + " and " + keywords[-1]
 
 
+# Tokens that should keep a fixed casing in titles rather than being
+# title-cased ("ai" -> "AI", not "Ai").
+_ACRONYMS = {
+    "ai": "AI", "us": "US", "uk": "UK", "eu": "EU", "sec": "SEC", "finra": "FINRA",
+    "nato": "NATO", "epa": "EPA", "usd": "USD", "gdp": "GDP", "ipo": "IPO",
+    "etf": "ETF", "crypto": "Crypto", "genai": "GenAI", "llm": "LLM", "ceo": "CEO",
+    "cfo": "CFO", "doj": "DOJ", "fbi": "FBI", "cia": "CIA", "un": "UN", "cagr": "CAGR",
+    "q1": "Q1", "q2": "Q2", "q3": "Q3", "q4": "Q4", "esg": "ESG", "ev": "EV",
+    "ml": "ML", "it": "IT", "pw": "PW", "ftnt": "FTNT", "crwd": "CRWD",
+}
+
+
+def _title_case_term(term):
+    """Title-case a keyword phrase, preserving known acronyms and numbers."""
+    out = []
+    for w in str(term).split():
+        lw = w.lower()
+        if lw in _ACRONYMS:
+            out.append(_ACRONYMS[lw])
+        elif any(ch.isdigit() for ch in w):
+            out.append(w)  # keep tokens like 2026, 5g, q1 as-is
+        else:
+            out.append(w[:1].upper() + w[1:] if w else w)
+    return " ".join(out)
+
+
+def topic_title(topic_model, topic_id, group, used=None):
+    """A concise, descriptive, unique title for a topic.
+
+    Built from the topic's top distinct keywords (title-cased, acronyms
+    preserved) into a short noun phrase like "Ransomware, Cyber Attacks &
+    Security". `used` is a set of already-assigned titles; on collision we add
+    another distinguishing keyword so every topic's title is unique.
+    """
+    if topic_id == -1:
+        return "Outlier / Unclustered"
+
+    words = topic_model.get_topic(topic_id) or []
+    keywords = _distinct_keywords(words, limit=6)
+    if not keywords:
+        return f"Topic {topic_id}"
+
+    titled = [_title_case_term(k) for k in keywords]
+
+    def compose(n):
+        picks = titled[:n]
+        if len(picks) == 1:
+            return picks[0]
+        if len(picks) == 2:
+            return f"{picks[0]} & {picks[1]}"
+        return ", ".join(picks[:-1]) + " & " + picks[-1]
+
+    # Start with 3 keywords, then grow to disambiguate collisions.
+    used = used if used is not None else set()
+    title = compose(3)
+    n = 3
+    while title in used and n < len(titled):
+        n += 1
+        title = compose(n)
+    if title in used:
+        title = f"{title} (topic {topic_id})"
+    used.add(title)
+    return title
+
+
 def topic_description(topic_model, topic_id, group, rep_docs=None, risk_map=None):
     """Compose a unique, readable one-line description for a topic.
 
@@ -444,6 +509,17 @@ def summarize_topics(df, topic_model, rep_docs_map=None, risk_map=None):
     """Build a per-topic summary keyed back to the risk IDs."""
     rep_docs_map = rep_docs_map or {}
     rows = []
+    used_titles = set()  # ensures every TOPIC_TITLE is distinct
+
+    # Assign titles largest-topic-first so the biggest topics get the cleanest
+    # (shortest) titles; smaller ones disambiguate around them.
+    group_sizes = df[df["TOPIC_ID"] != -1].groupby("TOPIC_ID").size()
+    title_order = list(group_sizes.sort_values(ascending=False).index)
+    titles = {}
+    for tid in title_order:
+        titles[tid] = topic_title(topic_model, tid, df[df["TOPIC_ID"] == tid],
+                                  used=used_titles)
+
     for topic_id, group in df.groupby("TOPIC_ID"):
         risk_ids = sorted(
             str(r) for r in group["RISK_ID"].dropna().unique()
@@ -451,6 +527,9 @@ def summarize_topics(df, topic_model, rep_docs_map=None, risk_map=None):
         # top keywords from the c-TF-IDF model
         words = topic_model.get_topic(topic_id) if topic_id != -1 else []
         top_keywords = ", ".join(w for w, _ in words[:8] if w) if words else ""
+
+        title = titles.get(topic_id, topic_title(topic_model, topic_id, group,
+                                                  used=used_titles))
 
         description = topic_description(
             topic_model, topic_id, group,
@@ -474,6 +553,7 @@ def summarize_topics(df, topic_model, rep_docs_map=None, risk_map=None):
 
         rows.append({
             "TOPIC_ID": topic_id,
+            "TOPIC_TITLE": title,
             "TOPIC_LABEL": topic_label(topic_model, topic_id),
             "TOPIC_DESCRIPTION": description,
             "ARTICLE_COUNT": len(group),
@@ -670,10 +750,14 @@ def run(input_path, articles_out, summary_out, days=None,
     summary = summarize_topics(df, topic_model, rep_docs_map=rep_docs_map,
                                risk_map=risk_map)
 
-    # Attach the generated description back onto each article row too.
-    desc_by_topic = dict(zip(summary["TOPIC_ID"], summary["TOPIC_DESCRIPTION"])) \
-        if not summary.empty else {}
+    # Attach the generated title + description back onto each article row too.
+    if not summary.empty:
+        desc_by_topic = dict(zip(summary["TOPIC_ID"], summary["TOPIC_DESCRIPTION"]))
+        title_by_topic = dict(zip(summary["TOPIC_ID"], summary["TOPIC_TITLE"]))
+    else:
+        desc_by_topic, title_by_topic = {}, {}
     df["TOPIC_DESCRIPTION"] = df["TOPIC_ID"].map(desc_by_topic).fillna("")
+    df["TOPIC_TITLE"] = df["TOPIC_ID"].map(title_by_topic).fillna("")
 
     # ---- write per-article output ----
     Path(articles_out).parent.mkdir(exist_ok=True)

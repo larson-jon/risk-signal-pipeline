@@ -1,0 +1,85 @@
+name: Risk Discovery Fetch
+
+# Broad, un-keyworded news collection for discovering risks OUTSIDE the current
+# taxonomy. Runs twice a day and rotates category sets (newsdata.io allows at
+# most 5 categories per request), so coverage broadens over time. The free-tier
+# /latest endpoint only spans the past 48h, so the corpus accumulates forward
+# across runs (append + dedup into output/discovery_news.csv).
+
+on:
+  schedule:
+    # Two runs/day. 10:00 UTC -> category Set A; 22:00 UTC -> category Set B.
+    - cron: "0 10 * * *"
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+    inputs:
+      category_set:
+        description: "Which category set to fetch"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - A
+          - B
+      pages:
+        description: "Pages per category (10 articles/page on free tier)"
+        required: false
+        default: "10"
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Choose category set (rotates by run)
+        id: pick
+        run: |
+          # Category sets (<=5 each, newsdata.io per-request cap).
+          SET_A="business,politics,technology,world,top"
+          SET_B="science,health,environment,crime,food"
+
+          CHOICE="${{ github.event.inputs.category_set || 'auto' }}"
+          if [ "$CHOICE" = "A" ]; then
+            CATS="$SET_A"
+          elif [ "$CHOICE" = "B" ]; then
+            CATS="$SET_B"
+          else
+            # auto: before 16:00 UTC use Set A, otherwise Set B. This maps the
+            # 10:00 cron to A and the 22:00 cron to B, and gives manual runs a
+            # sensible default based on time of day.
+            HOUR=$(date -u +%H)
+            if [ "$HOUR" -lt 16 ]; then CATS="$SET_A"; else CATS="$SET_B"; fi
+          fi
+          echo "categories=$CATS" >> $GITHUB_OUTPUT
+          echo "Selected categories: $CATS"
+
+      - name: Fetch broad discovery news (last 48h)
+        run: >-
+          python discover_fetch.py --latest
+          --categories "${{ steps.pick.outputs.categories }}"
+          --pages "${{ github.event.inputs.pages || '10' }}"
+        env:
+          NEWS_DATA_API_KEY: ${{ secrets.NEWS_DATA_API_KEY }}
+
+      - name: Commit and push discovery corpus
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions@users.noreply.github.com"
+          git add -f output/discovery_news.csv
+          git commit -m "Discovery fetch - $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "No changes to commit"
+          git push origin HEAD || echo "No changes to push"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}

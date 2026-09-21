@@ -214,6 +214,7 @@ def build_gaps(topics_df, risk_map, model, min_quality=0.0):
 
         rows.append({
             "TOPIC_ID": tid,
+            "TOPIC_TITLE": _first(g, "TOPIC_TITLE"),
             "TOPIC_LABEL": _first(g, "TOPIC_LABEL"),
             "TOPIC_DESCRIPTION": _first(g, "TOPIC_DESCRIPTION"),
             "RISK_IDS": ", ".join(topic_risks),
@@ -251,7 +252,7 @@ def _first(group, col):
     return ""
 
 
-def run(topics_path, encoded_path, risk_id_col, out_path, min_quality=0.5):
+def run(topics_path, encoded_path, risk_id_col, out_path, min_quality=0.6):
     topics_path = Path(topics_path)
     if not topics_path.exists():
         print(f"ERROR: topics file not found: {topics_path}")
@@ -298,8 +299,8 @@ def parse_args():
     p.add_argument("--encoded")
     p.add_argument("--risk-id-col", dest="risk_id_col")
     p.add_argument("--out")
-    p.add_argument("--min-quality", type=float, default=0.5, dest="min_quality",
-                   help="Drop topics whose mean QUALITY_SCORE is below this (default 0.5). "
+    p.add_argument("--min-quality", type=float, default=0.6, dest="min_quality",
+                   help="Drop topics whose mean QUALITY_SCORE is below this (default 0.6). "
                         "Set 0 to disable.")
     return p.parse_args()
 

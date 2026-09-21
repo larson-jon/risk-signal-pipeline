@@ -20,6 +20,13 @@ import argparse
 import os
 import json
 
+# Load NEWS_DATA_API_KEY from a local .env if present (no-op otherwise).
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 # SSL Certificate setup
 def setup_ssl_verification():
     """Setup SSL verification based on environment"""

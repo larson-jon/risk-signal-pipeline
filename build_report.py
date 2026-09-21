@@ -100,6 +100,23 @@ def _clean_num(value, default=0.0):
         return default
 
 
+def _clean_str(value):
+    """String value from a CSV cell, treating NaN / 'nan' / None as empty.
+
+    pandas reads an empty cell in an otherwise-numeric column (e.g. an optional
+    risk ID) as float NaN, whose str() is 'nan'. This normalizes those to "".
+    """
+    if value is None:
+        return ""
+    try:
+        if isinstance(value, float) and math.isnan(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    s = str(value).strip()
+    return "" if s.lower() == "nan" else s
+
+
 def _article_records(topics_df, topic_id, limit):
     """Build the trimmed per-article payload for one topic."""
     group = topics_df[topics_df["TOPIC_ID"] == topic_id]
@@ -147,7 +164,8 @@ def build_trends_payload(trends_df, trend_topics_df, by_risk_df=None):
     for _, r in trend_topics_df.iterrows():
         tid = int(r["TOPIC_ID"])
         risk_ids = [x.strip() for x in str(r.get("RISK_IDS", "")).split(",") if x.strip()]
-        label = str(r.get("TOPIC_LABEL", "") or "")
+        # Prefer the descriptive title; fall back to the keyword label.
+        label = _clean_str(r.get("TOPIC_TITLE")) or str(r.get("TOPIC_LABEL", "") or "")
         desc = str(r.get("TOPIC_DESCRIPTION", "") or "")
         benign = bool(r.get("IS_BENIGN", False))
         labels[tid], descriptions[tid], benign_flags[tid] = label, desc, benign
@@ -197,13 +215,13 @@ def build_gaps_payload(gaps_df):
     for _, r in gaps_df.iterrows():
         rows.append({
             "id": int(r["TOPIC_ID"]),
-            "label": str(r.get("TOPIC_LABEL", "") or ""),
+            "label": _clean_str(r.get("TOPIC_TITLE")) or str(r.get("TOPIC_LABEL", "") or ""),
             "description": str(r.get("TOPIC_DESCRIPTION", "") or ""),
             "riskIds": [x.strip() for x in str(r.get("RISK_IDS", "")).split(",") if x.strip()],
             "bestFitRisk": str(r.get("BEST_FIT_RISK", "") or ""),
             "bestFitRiskLabel": str(r.get("BEST_FIT_RISK_LABEL", "") or ""),
-            "betterFitRisk": str(r.get("BETTER_FIT_RISK", "") or "").replace(".0", ""),
-            "betterFitRiskLabel": str(r.get("BETTER_FIT_RISK_LABEL", "") or ""),
+            "betterFitRisk": _clean_str(r.get("BETTER_FIT_RISK")).replace(".0", ""),
+            "betterFitRiskLabel": _clean_str(r.get("BETTER_FIT_RISK_LABEL")),
             "fit": round(_clean_num(r.get("FIT"), 0.0), 3),
             "gap": round(_clean_num(r.get("GAP"), 0.0), 3),
             "gapRaw": round(_clean_num(r.get("GAP_RAW"), 0.0), 3),
@@ -229,6 +247,7 @@ def build_payload(topics_df, summary_df, risk_map=None, trends=None, gaps=None):
         risk_ids = [x.strip() for x in str(s.get("RISK_IDS", "")).split(",") if x.strip()]
         topics.append({
             "id": tid,
+            "title": _clean_str(s.get("TOPIC_TITLE")) or str(s.get("TOPIC_LABEL", "") or ""),
             "label": str(s.get("TOPIC_LABEL", "") or ""),
             "description": str(s.get("TOPIC_DESCRIPTION", "") or ""),
             "count": int(_clean_num(s.get("ARTICLE_COUNT"), 0)),
@@ -412,6 +431,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     padding: 14px 16px; cursor: pointer; align-items: start; }
   .topic-head:hover { background: var(--panel2); }
   .topic-title { font-weight: 650; font-size: 15px; }
+  .topic-keywords { color: var(--muted); font-size: 11.5px; margin-top: 2px; font-family: ui-monospace, monospace; }
   .topic-desc { color: var(--text); font-size: 13px; margin-top: 5px; max-width: 70ch; }
   .topic-meta { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
   .chips { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -491,6 +511,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="tab active" id="tab-topics" onclick="switchView('topics')">Topics</div>
     <div class="tab" id="tab-trends" onclick="switchView('trends')">Trends over time</div>
     <div class="tab" id="tab-gaps" onclick="switchView('gaps')">Candidate gaps</div>
+    <div class="tab" id="tab-risks" onclick="switchView('risks')">Risks &amp; search terms</div>
     <div class="tab" id="tab-method" onclick="switchView('method')">How this was built</div>
   </div>
 </header>
@@ -540,6 +561,14 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
       content quality.
     </div>
     <div id="gaps-body"></div>
+  </div>
+  <div class="view" id="view-risks">
+    <div class="sub" style="margin-bottom:14px">
+      The exact search terms used to fetch news for each risk. Articles are matched to a risk
+      when one of its terms surfaces them, so these terms define the scope of each risk's
+      coverage.
+    </div>
+    <div id="risks-body"></div>
   </div>
   <div class="view" id="view-method">
     <div id="method-body"></div>
@@ -662,7 +691,8 @@ function render() {
       <div class="topic" data-id="${t.id}">
         <div class="topic-head" onclick="this.parentNode.classList.toggle('open')">
           <div>
-            <div class="topic-title">${t.isOutlier ? "Outliers / Unclustered" : highlight(t.label, q)}</div>
+            <div class="topic-title">${t.isOutlier ? "Outliers / Unclustered" : highlight(t.title, q)}</div>
+            ${t.isOutlier ? "" : `<div class="topic-keywords">${highlight(t.label, q)}</div>`}
             ${t.description ? `<div class="topic-desc">${highlight(t.description, q)}</div>` : ""}
             <div class="topic-meta">Spans ${t.riskCount} risk${t.riskCount === 1 ? "" : "s"} ·
               avg sentiment ${t.avgCompound} ·
@@ -692,7 +722,7 @@ const LINE_COLORS = ["#58a6ff","#f85149","#3fb950","#d29922","#bc8cff",
   "#39c5cf","#ff7b72","#a5d6ff","#e3b341","#7ee787"];
 
 function switchView(name) {
-  ["topics", "trends", "gaps", "method"].forEach(v => {
+  ["topics", "trends", "gaps", "risks", "method"].forEach(v => {
     const on = v === name;
     const tab = el("tab-" + v), view = el("view-" + v);
     if (tab) tab.classList.toggle("active", on);
@@ -876,6 +906,37 @@ function renderGaps() {
 }
 
 // ---------------------------------------------------------------------------
+// Risks & search terms view
+// ---------------------------------------------------------------------------
+function renderRisks() {
+  const body = el("risks-body");
+  const ids = Object.keys(RISKS);
+  if (!ids.length) {
+    body.innerHTML = '<div class="empty">No risk search terms were embedded in this report.</div>';
+    return;
+  }
+  // How many topics touch each risk (from the Topics data).
+  const topicCount = {};
+  DATA.topics.forEach(t => {
+    if (t.isOutlier) return;
+    t.riskIds.forEach(r => { topicCount[String(r)] = (topicCount[String(r)] || 0) + 1; });
+  });
+
+  const rows = ids.sort((a, b) => Number(a) - Number(b)).map(id => {
+    const r = RISKS[id];
+    const terms = (r.terms || []).map(t => `<span class="chip">${esc(t)}</span>`).join("");
+    const n = topicCount[id] || 0;
+    return `<div class="risk-block">
+      <h2>Risk ${esc(id)} — ${esc(r.label || ("Risk " + id))}</h2>
+      <div class="rterms">${(r.terms || []).length} search term(s) ·
+        appears in ${n} topic${n === 1 ? "" : "s"}</div>
+      <div class="chips">${terms}</div>
+    </div>`;
+  }).join("");
+  body.innerHTML = rows;
+}
+
+// ---------------------------------------------------------------------------
 // Methodology view
 // ---------------------------------------------------------------------------
 function renderMethod() {
@@ -972,6 +1033,7 @@ populateTrendRiskFilter();
 render();
 renderTrends();
 renderGaps();
+renderRisks();
 renderMethod();
 ["q", "risk", "sentiment", "sort", "hideOut"].forEach(id =>
   el(id).addEventListener(el(id).type === "checkbox" ? "change" :
