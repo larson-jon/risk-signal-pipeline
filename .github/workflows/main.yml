@@ -1,5 +1,10 @@
 name: Daily News Sentiment Update
 
+# Grant the automatic GITHUB_TOKEN write access so the workflow can commit the
+# generated CSVs/reports back to the repo - no personal access token needed.
+permissions:
+  contents: write
+
 on:
   schedule:
     - cron: "0 9 * * *"  # runs daily at 9:00 UTC = 4:00 AM Eastern
@@ -29,8 +34,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        # Uses the built-in GITHUB_TOKEN (write access granted above); it is
+        # persisted for the commit/push step below.
 
       - name: Set default risk_type for schedule
         run: echo "RISK_TYPE=${{ github.event.inputs.risk_type || 'all' }}" >> $GITHUB_ENV  # default 'all' if no input
@@ -112,5 +117,3 @@ jobs:
           git add output/*.csv reports/*.html
           git commit -m "Update sentiment data - $(date +'%Y-%m-%d %H:%M')" || echo "No changes to commit"
           git push origin main || echo "No changes to push"
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
