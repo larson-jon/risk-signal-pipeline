@@ -4,59 +4,73 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Risk Signal Reports</title>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <style>
+  /* FINRA brand palette (light theme) */
   :root {
-    --bg: #0f1720; --panel: #172232; --panel2: #1e2c40; --text: #e6edf5;
-    --muted: #93a4bb; --border: #2a3a52; --accent: #58a6ff;
+    --core: #233E66; --accent: #0082D1; --gray: #595959;
+    --green: #9EC405; --yellow: #FFCF40; --red: #FB483D;
+    --bg: #f4f6f9; --panel: #ffffff; --text: #333;
+    --muted: #6b7280; --border: #e2e6ec;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.6 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-  header { padding: 40px 24px 24px; max-width: 900px; margin: 0 auto; }
-  h1 { margin: 0 0 8px; font-size: 26px; }
-  .lede { color: var(--muted); font-size: 15px; max-width: 70ch; }
-  main { max-width: 900px; margin: 0 auto; padding: 8px 24px 60px; }
+    font: 15px/1.6 'Open Sans', -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  .logoband { background: #fff; padding: 14px 40px; }
+  .logoband .logo { height: 46px; width: auto; display: block; }
+  .brandbar { height: 6px; background: var(--yellow); }
+  header { background: var(--core); color: #fff; padding: 26px 40px; }
+  header .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 26px; font-weight: 800; }
+  .tagline { color: #9db4d6; font-family: 'Lora', Georgia, serif; font-style: italic; font-size: 13px; margin-bottom: 10px; }
+  .lede { color: #cfdaea; font-size: 15px; max-width: 74ch; }
+  main { max-width: 1000px; margin: 0 auto; padding: 22px 40px 60px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
   .card { display: block; text-decoration: none; color: inherit;
     background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 20px; transition: border-color .15s, transform .15s; }
-  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
-  .card-title { font-size: 17px; font-weight: 650; margin-bottom: 6px; }
+    padding: 20px; box-shadow: 0 1px 2px rgba(16,36,66,.05); transition: border-color .15s, transform .15s, box-shadow .15s; }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(16,36,66,.10); }
+  .card-title { font-size: 17px; font-weight: 700; color: var(--core); margin-bottom: 6px; }
   .card-desc { color: var(--muted); font-size: 13.5px; margin-bottom: 12px; }
   .card-meta { font-size: 13px; color: var(--text); }
   .card-cov { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
-  .card-go { color: var(--accent); font-size: 13px; font-weight: 600; margin-top: 14px; }
-  .card.discovery { border-color: #3a5a3a; background: linear-gradient(180deg, #16241a, var(--panel)); }
-  .card.discovery:hover { border-color: #3fb950; }
+  .card-go { color: var(--accent); font-size: 13px; font-weight: 700; margin-top: 14px; }
+  .card.discovery { border-left: 4px solid var(--green); }
+  .card.discovery:hover { border-color: var(--green); border-left-color: var(--green); }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
-  .how { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 18px 20px; margin-top: 24px; color: var(--muted); font-size: 13.5px; max-width: 70ch; }
-  .how b { color: var(--text); }
-  footer { max-width: 900px; margin: 0 auto; padding: 20px 24px 40px;
+  .how { background: #eef3fa; border: 1px solid var(--border); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 16px 20px; margin-top: 24px; color: #2b3a52; font-size: 13.5px; max-width: 78ch; }
+  .how b { color: var(--core); }
+  footer { max-width: 1000px; margin: 0 auto; padding: 20px 40px 40px;
     color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
 </style>
 </head>
 <body>
+<div class="logoband"><img class="logo" src="finra%20logo.png" alt="FINRA Enterprise Risk Management"></div>
+<div class="brandbar"></div>
 <header>
-  <h1>Risk Signal Reports</h1>
-  <p class="lede">News coverage turned into risk signals: articles are fetched per risk, scored
-  for sentiment, enriched with spaCy, embedded and clustered into topics with BERTopic, tracked
-  month over month for signal intensity, and scored for how well each topic fits the risk that
-  surfaced it. Open a report below and see its "How this was built" tab for detail.</p>
+  <div class="wrap">
+    <h1>Risk Signal Reports</h1>
+    <div class="tagline">Investor protection. Market integrity.</div>
+    <p class="lede">News coverage turned into risk signals: articles are fetched per risk, scored
+    for sentiment, enriched with spaCy, embedded and clustered into topics with BERTopic, tracked
+    month over month for signal intensity, and scored for how well each topic fits the risk that
+    surfaced it. Open a report below and see its "How this was built" tab for detail.</p>
+  </div>
 </header>
 <main>
   <div class="grid">
     <a class="card" href="emerging_risks_report.html">
       <div class="card-title">Emerging Risk — Topic Explorer</div>
       <div class="card-desc">Emerging risks — full history clustering, trends, and taxonomy-gap analysis.</div>
-      <div class="card-meta">32,965 articles · 59 topics</div>
+      <div class="card-meta">32,683 articles · 59 topics</div>
       <div class="card-cov">Coverage: 2026-01 → 2026-09 · 9 months</div>
       <div class="card-go">Open report →</div>
     </a>
     <a class="card" href="enterprise_risks_report.html">
       <div class="card-title">Enterprise Risk — Topic Explorer</div>
       <div class="card-desc">Enterprise risks — full history clustering, trends, and taxonomy-gap analysis.</div>
-      <div class="card-meta">8,765 articles · 59 topics</div>
+      <div class="card-meta">8,708 articles · 59 topics</div>
       <div class="card-cov">Coverage: 2026-01 → 2026-09 · 9 months</div>
       <div class="card-go">Open report →</div>
     </a>
@@ -75,6 +89,6 @@
     <b>How this was built</b> (the full methodology).
   </div>
 </main>
-<footer>Generated 2026-09-22 10:03 · self-contained HTML, no external dependencies.</footer>
+<footer>Generated 2026-09-23 09:37 · self-contained HTML, no external dependencies.</footer>
 </body>
 </html>

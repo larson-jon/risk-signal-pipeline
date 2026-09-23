@@ -207,45 +207,59 @@ _TEMPLATE = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Risk Signal Reports</title>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <style>
+  /* FINRA brand palette (light theme) */
   :root {
-    --bg: #0f1720; --panel: #172232; --panel2: #1e2c40; --text: #e6edf5;
-    --muted: #93a4bb; --border: #2a3a52; --accent: #58a6ff;
+    --core: #233E66; --accent: #0082D1; --gray: #595959;
+    --green: #9EC405; --yellow: #FFCF40; --red: #FB483D;
+    --bg: #f4f6f9; --panel: #ffffff; --text: #333;
+    --muted: #6b7280; --border: #e2e6ec;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.6 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-  header { padding: 40px 24px 24px; max-width: 900px; margin: 0 auto; }
-  h1 { margin: 0 0 8px; font-size: 26px; }
-  .lede { color: var(--muted); font-size: 15px; max-width: 70ch; }
-  main { max-width: 900px; margin: 0 auto; padding: 8px 24px 60px; }
+    font: 15px/1.6 'Open Sans', -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  .logoband { background: #fff; padding: 14px 40px; }
+  .logoband .logo { height: 46px; width: auto; display: block; }
+  .brandbar { height: 6px; background: var(--yellow); }
+  header { background: var(--core); color: #fff; padding: 26px 40px; }
+  header .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 26px; font-weight: 800; }
+  .tagline { color: #9db4d6; font-family: 'Lora', Georgia, serif; font-style: italic; font-size: 13px; margin-bottom: 10px; }
+  .lede { color: #cfdaea; font-size: 15px; max-width: 74ch; }
+  main { max-width: 1000px; margin: 0 auto; padding: 22px 40px 60px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
   .card { display: block; text-decoration: none; color: inherit;
     background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 20px; transition: border-color .15s, transform .15s; }
-  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
-  .card-title { font-size: 17px; font-weight: 650; margin-bottom: 6px; }
+    padding: 20px; box-shadow: 0 1px 2px rgba(16,36,66,.05); transition: border-color .15s, transform .15s, box-shadow .15s; }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(16,36,66,.10); }
+  .card-title { font-size: 17px; font-weight: 700; color: var(--core); margin-bottom: 6px; }
   .card-desc { color: var(--muted); font-size: 13.5px; margin-bottom: 12px; }
   .card-meta { font-size: 13px; color: var(--text); }
   .card-cov { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
-  .card-go { color: var(--accent); font-size: 13px; font-weight: 600; margin-top: 14px; }
-  .card.discovery { border-color: #3a5a3a; background: linear-gradient(180deg, #16241a, var(--panel)); }
-  .card.discovery:hover { border-color: #3fb950; }
+  .card-go { color: var(--accent); font-size: 13px; font-weight: 700; margin-top: 14px; }
+  .card.discovery { border-left: 4px solid var(--green); }
+  .card.discovery:hover { border-color: var(--green); border-left-color: var(--green); }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
-  .how { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-    padding: 18px 20px; margin-top: 24px; color: var(--muted); font-size: 13.5px; max-width: 70ch; }
-  .how b { color: var(--text); }
-  footer { max-width: 900px; margin: 0 auto; padding: 20px 24px 40px;
+  .how { background: #eef3fa; border: 1px solid var(--border); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 16px 20px; margin-top: 24px; color: #2b3a52; font-size: 13.5px; max-width: 78ch; }
+  .how b { color: var(--core); }
+  footer { max-width: 1000px; margin: 0 auto; padding: 20px 40px 40px;
     color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
 </style>
 </head>
 <body>
+<div class="logoband"><img class="logo" src="finra%20logo.png" alt="FINRA Enterprise Risk Management"></div>
+<div class="brandbar"></div>
 <header>
-  <h1>Risk Signal Reports</h1>
-  <p class="lede">News coverage turned into risk signals: articles are fetched per risk, scored
-  for sentiment, enriched with spaCy, embedded and clustered into topics with BERTopic, tracked
-  month over month for signal intensity, and scored for how well each topic fits the risk that
-  surfaced it. Open a report below and see its "How this was built" tab for detail.</p>
+  <div class="wrap">
+    <h1>Risk Signal Reports</h1>
+    <div class="tagline">Investor protection. Market integrity.</div>
+    <p class="lede">News coverage turned into risk signals: articles are fetched per risk, scored
+    for sentiment, enriched with spaCy, embedded and clustered into topics with BERTopic, tracked
+    month over month for signal intensity, and scored for how well each topic fits the risk that
+    surfaced it. Open a report below and see its "How this was built" tab for detail.</p>
+  </div>
 </header>
 <main>
   <div class="grid">
@@ -270,31 +284,41 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Risk Discovery — What We're Collecting</title>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <style>
+  /* FINRA brand palette (light theme) */
   :root {
-    --bg: #0f1720; --panel: #172232; --panel2: #1e2c40; --text: #e6edf5;
-    --muted: #93a4bb; --border: #2a3a52; --accent: #58a6ff; --green: #3fb950;
+    --core: #233E66; --accent: #0082D1; --gray: #595959;
+    --green: #9EC405; --yellow: #FFCF40; --red: #FB483D;
+    --bg: #f4f6f9; --panel: #ffffff; --panel2: #eef3fa; --text: #333;
+    --muted: #6b7280; --border: #e2e6ec;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.65 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-  header { padding: 34px 24px 20px; max-width: 820px; margin: 0 auto; }
-  a.back { color: var(--accent); text-decoration: none; font-size: 13px; }
-  a.back:hover { text-decoration: underline; }
-  h1 { margin: 12px 0 6px; font-size: 25px; }
-  h2 { font-size: 17px; margin: 26px 0 8px; color: var(--accent); }
-  .lede { color: var(--muted); max-width: 72ch; }
+    font: 15px/1.65 'Open Sans', -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  .logoband { background: #fff; padding: 14px 24px; }
+  .logoband .logo { height: 46px; width: auto; display: block; }
+  .brandbar { height: 6px; background: var(--yellow); }
+  .topbar { background: var(--core); color: #fff; padding: 24px 24px; }
+  .topbar .wrap { max-width: 820px; margin: 0 auto; }
+  a.back { color: #cfe0f5; text-decoration: none; font-size: 13px; }
+  a.back:hover { text-decoration: underline; color: #fff; }
+  h1 { margin: 10px 0 6px; font-size: 25px; font-weight: 800; }
+  .tagline { color: #9db4d6; font-family: 'Lora', Georgia, serif; font-style: italic; font-size: 12px; margin-bottom: 10px; }
+  h2 { font-size: 17px; margin: 26px 0 8px; color: var(--core); font-weight: 800; }
+  .lede { color: #cfdaea; max-width: 72ch; }
   main { max-width: 820px; margin: 0 auto; padding: 4px 24px 60px; }
   .panel { background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; padding: 18px 22px; margin-top: 16px; }
+    border-radius: 12px; padding: 18px 22px; margin-top: 16px; box-shadow: 0 1px 2px rgba(16,36,66,.05); }
   p { max-width: 72ch; }
   .statline { font-size: 15px; margin: 4px 0; }
+  .statline b { color: var(--core); }
   .statline.muted, .muted { color: var(--muted); font-size: 13.5px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-  .chip { background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+  .chip { background: var(--panel2); border: 1px solid var(--border); color: var(--gray);
     border-radius: 999px; padding: 3px 10px; font-size: 12.5px; }
   .method { border-left: 3px solid var(--green); padding-left: 14px; margin: 14px 0; }
-  .method h3 { margin: 0 0 4px; font-size: 15px; }
+  .method h3 { margin: 0 0 4px; font-size: 15px; color: var(--core); font-weight: 700; }
   code { background: var(--panel2); border-radius: 4px; padding: 1px 6px; font-size: 13px; }
   .note { color: var(--muted); font-size: 13px; }
   footer { max-width: 820px; margin: 0 auto; padding: 20px 24px 40px;
@@ -302,15 +326,20 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
 </style>
 </head>
 <body>
-<header>
-  <a class="back" href="index.html">← Back to reports</a>
-  <h1>Risk Discovery: finding risks that aren't on our list</h1>
-  <p class="lede">The main pipeline only ever sees news that matched one of our existing risk
-  search terms — so by design it can't reveal a risk we never thought to search for. Risk
-  discovery closes that blind spot: it collects a broad stream of news chosen <i>without</i>
-  reference to our risk list, so we can later surface coherent, significant themes that sit far
-  from every risk we currently track.</p>
-</header>
+<div class="logoband"><img class="logo" src="finra%20logo.png" alt="FINRA Enterprise Risk Management"></div>
+<div class="brandbar"></div>
+<div class="topbar">
+  <div class="wrap">
+    <a class="back" href="index.html">← Back to reports</a>
+    <h1>Risk Discovery: finding risks that aren't on our list</h1>
+    <div class="tagline">Investor protection. Market integrity.</div>
+    <p class="lede">The main pipeline only ever sees news that matched one of our existing risk
+    search terms — so by design it can't reveal a risk we never thought to search for. Risk
+    discovery closes that blind spot: it collects a broad stream of news chosen <i>without</i>
+    reference to our risk list, so we can later surface coherent, significant themes that sit far
+    from every risk we currently track.</p>
+  </div>
+</div>
 <main>
 
   <div class="panel">

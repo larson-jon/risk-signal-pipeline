@@ -400,85 +400,94 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <style>
+  /* FINRA brand palette (light theme) */
   :root {
-    --bg: #0f1720; --panel: #172232; --panel2: #1e2c40; --text: #e6edf5;
-    --muted: #93a4bb; --border: #2a3a52;
-    --pos: #3fb950; --neg: #f85149; --neu: #8b98a9; --accent: #58a6ff;
+    --core: #233E66; --accent: #0082D1; --gray: #595959;
+    --green: #9EC405; --yellow: #FFCF40; --red: #FB483D;
+    --bg: #f4f6f9; --panel: #ffffff; --panel2: #eef3fa; --text: #333;
+    --muted: #6b7280; --border: #e2e6ec;
+    --pos: #6f8f00; --neg: #d13c32; --neu: #595959;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.5 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-  header { padding: 20px 24px; border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, #16212f, #0f1720); position: sticky; top: 0; z-index: 5; }
-  h1 { margin: 4px 0 4px; font-size: 20px; }
-  a.back { color: var(--accent); text-decoration: none; font-size: 13px; }
-  a.back:hover { text-decoration: underline; }
-  .sub { color: var(--muted); font-size: 13px; }
+    font: 14px/1.5 'Open Sans', -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  /* FINRA header pattern: white logo band -> yellow rule -> Core Blue title bar */
+  .logoband { background: #fff; padding: 14px 24px; }
+  .logoband .logo { height: 46px; width: auto; display: block; }
+  .brandbar { height: 6px; background: var(--yellow); }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--border);
+    background: var(--core); color: #fff; position: sticky; top: 0; z-index: 5; }
+  h1 { margin: 4px 0 4px; font-size: 21px; font-weight: 800; color: #fff; }
+  header .tagline { color: #9db4d6; font-family: 'Lora', Georgia, serif; font-style: italic; font-size: 12px; margin-top: 6px; }
+  a.back { color: #cfe0f5; text-decoration: none; font-size: 13px; }
+  a.back:hover { text-decoration: underline; color: #fff; }
+  .sub { color: #c9d6e8; font-size: 13px; }
   .stats { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; }
-  .stat { background: var(--panel); border: 1px solid var(--border);
+  .stat { background: #1c3454; border: 1px solid #35507a;
     border-radius: 8px; padding: 10px 14px; min-width: 110px; }
-  .stat .n { font-size: 20px; font-weight: 700; }
-  .stat .l { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .stat .n { font-size: 20px; font-weight: 800; color: #fff; }
+  .stat .l { color: #9db4d6; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
   .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
     padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; }
-  input[type=search], select { background: var(--panel2); color: var(--text);
+  input[type=search], select { background: #fff; color: var(--text);
     border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
   input[type=search] { min-width: 260px; flex: 1; }
   label.toggle { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
-  main { padding: 18px 24px 60px; }
+  main { padding: 18px 24px 60px; max-width: 1200px; margin: 0 auto; }
   .topic { background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+    border-radius: 10px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,36,66,.05); }
   .topic-head { display: grid; grid-template-columns: 1fr auto; gap: 12px;
     padding: 14px 16px; cursor: pointer; align-items: start; }
   .topic-head:hover { background: var(--panel2); }
-  .topic-title { font-weight: 650; font-size: 15px; }
+  .topic-title { font-weight: 700; font-size: 15px; color: var(--core); }
   .topic-keywords { color: var(--muted); font-size: 11.5px; margin-top: 2px; font-family: ui-monospace, monospace; }
   .topic-desc { color: var(--text); font-size: 13px; margin-top: 5px; max-width: 70ch; }
   .topic-meta { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
   .chips { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip { background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+  .chip { background: var(--panel2); border: 1px solid var(--border); color: var(--gray);
     border-radius: 999px; padding: 2px 9px; font-size: 11.5px; }
-  .chip.risk { color: var(--accent); border-color: #274b73; }
-  .chip.risk b { color: var(--text); font-weight: 700; margin-right: 2px; }
-  .chip.risk.active { background: #274b73; color: #fff; border-color: var(--accent); }
+  .chip.risk { color: var(--accent); border-color: #bcd9ee; background: #f0f7fc; }
+  .chip.risk b { color: var(--core); font-weight: 700; margin-right: 2px; }
+  .chip.risk.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .chip.risk.active b { color: #fff; }
   .badges { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; white-space: nowrap; }
-  .count { font-size: 22px; font-weight: 700; }
+  .count { font-size: 22px; font-weight: 800; color: var(--core); }
   .pill { border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
-  .pill.Positive { background: rgba(63,185,80,.15); color: var(--pos); }
-  .pill.Negative { background: rgba(248,81,73,.15); color: var(--neg); }
-  .pill.Neutral  { background: rgba(139,152,169,.15); color: var(--neu); }
+  .pill.Positive { background: rgba(158,196,5,.18); color: var(--pos); }
+  .pill.Negative { background: rgba(251,72,61,.15); color: var(--neg); }
+  .pill.Neutral  { background: rgba(89,89,89,.12); color: var(--neu); }
   .articles { display: none; border-top: 1px solid var(--border); }
   .topic.open .articles { display: block; }
   .art { display: grid; grid-template-columns: 1fr auto; gap: 10px;
     padding: 10px 16px; border-top: 1px solid var(--border); }
   .art:first-child { border-top: none; }
-  .art a { color: var(--accent); text-decoration: none; font-weight: 550; }
+  .art a { color: var(--accent); text-decoration: none; font-weight: 600; }
   .art a:hover { text-decoration: underline; }
   .art .meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
   .art .ent { color: var(--muted); font-size: 12px; margin-top: 3px; font-style: italic; }
   .art .right { text-align: right; white-space: nowrap; color: var(--muted); font-size: 12px; }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
   .foot { color: var(--muted); font-size: 12px; padding: 16px 24px; border-top: 1px solid var(--border); }
-  mark { background: #3b5074; color: #fff; border-radius: 2px; padding: 0 1px; }
+  mark { background: var(--yellow); color: var(--core); border-radius: 2px; padding: 0 1px; }
   /* tabs */
-  .tabs { display: flex; gap: 4px; margin-top: 14px; }
-  .tab { background: transparent; color: var(--muted); border: 1px solid var(--border);
+  .tabs { display: flex; gap: 4px; margin-top: 14px; flex-wrap: wrap; }
+  .tab { background: rgba(255,255,255,.08); color: #c9d6e8; border: 1px solid #35507a;
     border-bottom: none; border-radius: 8px 8px 0 0; padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 600; }
-  .tab.active { background: var(--panel); color: var(--text); }
+  .tab.active { background: var(--panel); color: var(--core); border-color: var(--border); }
   .view { display: none; }
   .view.active { display: block; }
   /* trends */
   .rising { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 14px 16px; margin-bottom: 18px; }
-  .rising h3 { margin: 0 0 10px; font-size: 14px; }
+    padding: 14px 16px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(16,36,66,.05); }
+  .rising h3 { margin: 0 0 10px; font-size: 14px; color: var(--core); font-weight: 800; }
   .rising-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
-  .rising-row .arrow { color: var(--neg); font-weight: 700; min-width: 54px; }
-  .rising-row .arrow.down { color: var(--pos); }
+  .rising-row .arrow { color: var(--red); font-weight: 700; min-width: 54px; }
+  .rising-row .arrow.down { color: var(--green); }
   .risk-block { background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; margin-bottom: 16px; padding: 14px 16px; }
-  .risk-block h2 { font-size: 15px; margin: 0 0 2px; }
+    border-radius: 10px; margin-bottom: 16px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(16,36,66,.05); }
+  .risk-block h2 { font-size: 15px; margin: 0 0 2px; color: var(--core); font-weight: 800; }
   .risk-block .rterms { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
   .chart-wrap { display: grid; grid-template-columns: 1fr; gap: 8px; }
   .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 12px; }
@@ -487,27 +496,30 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   svg .grid { stroke: var(--border); stroke-width: 1; }
   svg .axis { fill: var(--muted); font-size: 10px; }
   svg .line { fill: none; stroke-width: 2; }
-  svg .dot { stroke: var(--bg); stroke-width: 1; }
-  svg .peak { fill: var(--neg); }
+  svg .dot { stroke: var(--panel); stroke-width: 1; }
+  svg .peak { fill: var(--red); }
   /* gap bar */
   .gapbar { position: relative; height: 16px; background: var(--panel2);
     border: 1px solid var(--border); border-radius: 4px; margin-top: 8px; max-width: 320px; }
-  .gapbar-fill { height: 100%; background: linear-gradient(90deg, #d29922, #f85149); border-radius: 3px; }
-  .gapbar-label { position: absolute; left: 8px; top: 0; font-size: 11px; line-height: 16px; color: var(--text); }
+  .gapbar-fill { height: 100%; background: linear-gradient(90deg, var(--yellow), var(--red)); border-radius: 3px; }
+  .gapbar-label { position: absolute; left: 8px; top: 0; font-size: 11px; line-height: 16px; color: var(--core); font-weight: 600; }
   /* methodology */
   .method { max-width: 80ch; background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; padding: 20px 24px; }
-  .method h3 { font-size: 15px; margin: 22px 0 6px; color: var(--accent); }
+    border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 2px rgba(16,36,66,.05); }
+  .method h3 { font-size: 15px; margin: 22px 0 6px; color: var(--core); font-weight: 800; }
   .method p { margin: 6px 0; }
-  .method pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  .method pre { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
     padding: 10px 12px; font-size: 12.5px; overflow-x: auto; color: var(--text); }
   .method code { background: var(--panel2); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
 </style>
 </head>
 <body>
+<div class="logoband"><img class="logo" src="finra%20logo.png" alt="FINRA Enterprise Risk Management"></div>
+<div class="brandbar"></div>
 <header>
   <a class="back" href="index.html">← Back to reports</a>
   <h1>__TITLE__</h1>
+  <div class="tagline">Investor protection. Market integrity.</div>
   <div class="sub">Topics discovered with sentence-transformers + BERTopic, enriched with spaCy. Click a topic to see its articles.</div>
   <div class="stats" id="stats"></div>
   <div class="tabs">
@@ -721,8 +733,9 @@ function render() {
 // Trends view
 // ---------------------------------------------------------------------------
 const TRENDS = DATA.trends;
-const LINE_COLORS = ["#58a6ff","#f85149","#3fb950","#d29922","#bc8cff",
-  "#39c5cf","#ff7b72","#a5d6ff","#e3b341","#7ee787"];
+// FINRA-brand chart series: Core Blue, Accent Blue, gray, green, yellow, red, then tints.
+const LINE_COLORS = ["#233E66","#0082D1","#595959","#9EC405","#f2872f","#FB483D",
+  "#5b7aa6","#4bb0e0","#c2d76a","#8a97a6"];
 
 function switchView(name) {
   ["topics", "trends", "gaps", "risks", "method"].forEach(v => {
