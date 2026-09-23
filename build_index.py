@@ -106,11 +106,24 @@ def _discovery_card(discovery_file):
     </a>"""
 
 
-def build_html(reports, discovery_file=None):
+def _readme_card(readme_file):
+    """A card linking to the rendered README / project documentation page."""
+    return f"""    <a class="card" href="{readme_file}">
+      <div class="card-title">Documentation — how the pipeline works</div>
+      <div class="card-desc">The full project README: pipeline stages, methodology,
+      setup, usage, and output formats.</div>
+      <div class="card-meta">Project reference</div>
+      <div class="card-go">Read the docs →</div>
+    </a>"""
+
+
+def build_html(reports, discovery_file=None, readme_file=None):
     cards = "\n".join(_card(r) for r in reports) or \
         '<div class="empty">No reports found. Run build_report.py first.</div>'
     if discovery_file:
         cards += "\n" + _discovery_card(discovery_file)
+    if readme_file:
+        cards += "\n" + _readme_card(readme_file)
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
     return _TEMPLATE.replace("__CARDS__", cards).replace("__GENERATED__", generated)
 
@@ -136,6 +149,116 @@ def _discovery_stats():
     except Exception:
         pass
     return stats
+
+
+def _md_inline(text):
+    """Inline markdown -> HTML: escape, then code, bold, links."""
+    import html as _html
+    text = _html.escape(text, quote=False)
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)",
+                  r'<a href="\2" target="_blank" rel="noopener">\1</a>', text)
+    return text
+
+
+def md_to_html(md):
+    """Minimal, dependency-free Markdown -> HTML for the README constructs we use
+    (headers, fenced code, inline code/bold/links, tables, blockquotes, lists)."""
+    lines = md.splitlines()
+    out, i = [], 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+
+        # fenced code block
+        if line.startswith("```"):
+            i += 1
+            buf = []
+            while i < n and not lines[i].startswith("```"):
+                buf.append(lines[i])
+                i += 1
+            i += 1  # skip closing fence
+            import html as _html
+            out.append("<pre><code>" + _html.escape("\n".join(buf)) + "</code></pre>")
+            continue
+
+        # headers
+        m = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if m:
+            lvl = len(m.group(1))
+            out.append(f"<h{lvl}>{_md_inline(m.group(2))}</h{lvl}>")
+            i += 1
+            continue
+
+        # blockquote (may span multiple lines)
+        if line.startswith(">"):
+            buf = []
+            while i < n and lines[i].startswith(">"):
+                buf.append(lines[i].lstrip(">").strip())
+                i += 1
+            out.append(f"<blockquote>{_md_inline(' '.join(buf))}</blockquote>")
+            continue
+
+        # table (header row | ---- | rows)
+        if "|" in line and i + 1 < n and re.match(r"^\s*\|?[\s:|-]+\|?\s*$", lines[i + 1]):
+            def cells(row):
+                return [c.strip() for c in row.strip().strip("|").split("|")]
+            header = cells(line)
+            i += 2  # skip header + separator
+            rows = []
+            while i < n and "|" in lines[i]:
+                rows.append(cells(lines[i]))
+                i += 1
+            thead = "".join(f"<th>{_md_inline(c)}</th>" for c in header)
+            tbody = "".join(
+                "<tr>" + "".join(f"<td>{_md_inline(c)}</td>" for c in r) + "</tr>"
+                for r in rows)
+            out.append(f"<table><thead><tr>{thead}</tr></thead><tbody>{tbody}</tbody></table>")
+            continue
+
+        # unordered / ordered list
+        if re.match(r"^\s*[-*]\s+", line) or re.match(r"^\s*\d+\.\s+", line):
+            ordered = bool(re.match(r"^\s*\d+\.\s+", line))
+            tag = "ol" if ordered else "ul"
+            items = []
+            while i < n and (re.match(r"^\s*[-*]\s+", lines[i]) or re.match(r"^\s*\d+\.\s+", lines[i])):
+                item = re.sub(r"^\s*(?:[-*]|\d+\.)\s+", "", lines[i])
+                items.append(f"<li>{_md_inline(item)}</li>")
+                i += 1
+            out.append(f"<{tag}>{''.join(items)}</{tag}>")
+            continue
+
+        # blank line
+        if not line.strip():
+            i += 1
+            continue
+
+        # paragraph (gather until blank / block start)
+        buf = [line]
+        i += 1
+        while i < n and lines[i].strip() and not re.match(
+                r"^(#{1,6}\s|```|>|\s*[-*]\s|\s*\d+\.\s)", lines[i]) and "|" not in lines[i]:
+            buf.append(lines[i])
+            i += 1
+        out.append(f"<p>{_md_inline(' '.join(buf))}</p>")
+
+    return "\n".join(out)
+
+
+def build_readme_page(out_dir):
+    """Render README.md into a FINRA-branded HTML page."""
+    readme = Path("README.md")
+    if not readme.exists():
+        print("NOTE: README.md not found; skipping readme page.")
+        return None
+    body = md_to_html(readme.read_text(encoding="utf-8"))
+    generated = datetime.now().strftime("%Y-%m-%d %H:%M")
+    html = _README_TEMPLATE.replace("__BODY__", body).replace("__GENERATED__", generated)
+    out = Path(out_dir) / "readme.html"
+    out.write_text(html, encoding="utf-8")
+    print(f"Wrote readme page -> {out}")
+    return out
 
 
 def build_discovery_page(out_dir):
@@ -176,9 +299,12 @@ def build_discovery_page(out_dir):
 
 def run(report_dir, out_path):
     reports = collect(report_dir)
-    # Build the discovery explainer page first so the index can link to it.
+    # Build the explainer pages first so the index can link to them.
     disco = build_discovery_page(report_dir)
-    html = build_html(reports, discovery_file=disco.name if disco else None)
+    readme = build_readme_page(report_dir)
+    html = build_html(reports,
+                      discovery_file=disco.name if disco else None,
+                      readme_file=readme.name if readme else None)
     out = Path(out_path)
     out.parent.mkdir(exist_ok=True)
     out.write_text(html, encoding="utf-8")
@@ -391,6 +517,81 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
 
 </main>
 <footer>Generated __GENERATED__ · self-contained HTML, no external dependencies.</footer>
+</body>
+</html>
+"""
+
+
+_README_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk Signal Pipeline — Documentation</title>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<style>
+  /* FINRA brand palette (light theme) */
+  :root {
+    --core: #233E66; --accent: #0082D1; --gray: #595959;
+    --green: #9EC405; --yellow: #FFCF40; --red: #FB483D;
+    --bg: #f4f6f9; --panel: #ffffff; --panel2: #eef3fa; --text: #333;
+    --muted: #6b7280; --border: #e2e6ec;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.65 'Open Sans', -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  .logoband { background: #fff; padding: 14px 24px; }
+  .logoband .logo { height: 46px; width: auto; display: block; }
+  .brandbar { height: 6px; background: var(--yellow); }
+  .topbar { background: var(--core); color: #fff; padding: 22px 24px; }
+  .topbar .wrap { max-width: 900px; margin: 0 auto; }
+  a.back { color: #cfe0f5; text-decoration: none; font-size: 13px; }
+  a.back:hover { text-decoration: underline; color: #fff; }
+  .topbar h1 { margin: 10px 0 4px; font-size: 24px; font-weight: 800; }
+  .tagline { color: #9db4d6; font-family: 'Lora', Georgia, serif; font-style: italic; font-size: 12px; }
+  main { max-width: 900px; margin: 0 auto; padding: 10px 24px 60px; }
+  .doc { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 8px 30px 24px; margin-top: 18px; box-shadow: 0 1px 2px rgba(16,36,66,.05); }
+  .doc h1 { font-size: 24px; font-weight: 800; color: var(--core);
+    border-bottom: 2px solid var(--yellow); padding-bottom: 8px; margin: 26px 0 12px; }
+  .doc h2 { font-size: 19px; font-weight: 800; color: var(--core); margin: 28px 0 10px;
+    border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+  .doc h3 { font-size: 16px; font-weight: 700; color: var(--core); margin: 22px 0 8px; }
+  .doc p { max-width: 80ch; }
+  .doc a { color: var(--accent); }
+  .doc code { background: var(--panel2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 5px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .doc pre { background: #1c2b40; color: #e6edf5; border-radius: 8px; padding: 14px 16px;
+    overflow-x: auto; font-size: 12.5px; line-height: 1.5; }
+  .doc pre code { background: none; border: none; color: inherit; padding: 0; }
+  .doc blockquote { border-left: 4px solid var(--accent); background: #eef3fa; margin: 14px 0;
+    padding: 10px 16px; color: #2b3a52; border-radius: 4px; }
+  .doc table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 14px 0; }
+  .doc th, .doc td { padding: 8px 11px; border-bottom: 1px solid var(--border); text-align: left; }
+  .doc thead th { background: var(--core); color: #fff; font-weight: 600; }
+  .doc tbody tr:nth-child(even) { background: #f7f9fc; }
+  .doc ul, .doc ol { max-width: 80ch; }
+  .doc li { margin: 3px 0; }
+  footer { max-width: 900px; margin: 0 auto; padding: 20px 24px 40px;
+    color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="logoband"><img class="logo" src="finra%20logo.png" alt="FINRA Enterprise Risk Management"></div>
+<div class="brandbar"></div>
+<div class="topbar">
+  <div class="wrap">
+    <a class="back" href="index.html">← Back to reports</a>
+    <h1>Risk Signal Pipeline — Documentation</h1>
+    <div class="tagline">Investor protection. Market integrity.</div>
+  </div>
+</div>
+<main>
+  <div class="doc">
+__BODY__
+  </div>
+</main>
+<footer>Rendered from README.md · Generated __GENERATED__ · self-contained HTML.</footer>
 </body>
 </html>
 """

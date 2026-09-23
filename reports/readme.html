@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk Signal Pipeline — Documentation</title>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<style>
+  /* FINRA brand palette (light theme) */
+  :root {
+    --core: #233E66; --accent: #0082D1; --gray: #595959;
+    --green: #9EC405; --yellow: #FFCF40; --red: #FB483D;
+    --bg: #f4f6f9; --panel: #ffffff; --panel2: #eef3fa; --text: #333;
+    --muted: #6b7280; --border: #e2e6ec;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.65 'Open Sans', -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  .logoband { background: #fff; padding: 14px 24px; }
+  .logoband .logo { height: 46px; width: auto; display: block; }
+  .brandbar { height: 6px; background: var(--yellow); }
+  .topbar { background: var(--core); color: #fff; padding: 22px 24px; }
+  .topbar .wrap { max-width: 900px; margin: 0 auto; }
+  a.back { color: #cfe0f5; text-decoration: none; font-size: 13px; }
+  a.back:hover { text-decoration: underline; color: #fff; }
+  .topbar h1 { margin: 10px 0 4px; font-size: 24px; font-weight: 800; }
+  .tagline { color: #9db4d6; font-family: 'Lora', Georgia, serif; font-style: italic; font-size: 12px; }
+  main { max-width: 900px; margin: 0 auto; padding: 10px 24px 60px; }
+  .doc { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 8px 30px 24px; margin-top: 18px; box-shadow: 0 1px 2px rgba(16,36,66,.05); }
+  .doc h1 { font-size: 24px; font-weight: 800; color: var(--core);
+    border-bottom: 2px solid var(--yellow); padding-bottom: 8px; margin: 26px 0 12px; }
+  .doc h2 { font-size: 19px; font-weight: 800; color: var(--core); margin: 28px 0 10px;
+    border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+  .doc h3 { font-size: 16px; font-weight: 700; color: var(--core); margin: 22px 0 8px; }
+  .doc p { max-width: 80ch; }
+  .doc a { color: var(--accent); }
+  .doc code { background: var(--panel2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 1px 5px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .doc pre { background: #1c2b40; color: #e6edf5; border-radius: 8px; padding: 14px 16px;
+    overflow-x: auto; font-size: 12.5px; line-height: 1.5; }
+  .doc pre code { background: none; border: none; color: inherit; padding: 0; }
+  .doc blockquote { border-left: 4px solid var(--accent); background: #eef3fa; margin: 14px 0;
+    padding: 10px 16px; color: #2b3a52; border-radius: 4px; }
+  .doc table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 14px 0; }
+  .doc th, .doc td { padding: 8px 11px; border-bottom: 1px solid var(--border); text-align: left; }
+  .doc thead th { background: var(--core); color: #fff; font-weight: 600; }
+  .doc tbody tr:nth-child(even) { background: #f7f9fc; }
+  .doc ul, .doc ol { max-width: 80ch; }
+  .doc li { margin: 3px 0; }
+  footer { max-width: 900px; margin: 0 auto; padding: 20px 24px 40px;
+    color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="logoband"><img class="logo" src="finra%20logo.png" alt="FINRA Enterprise Risk Management"></div>
+<div class="brandbar"></div>
+<div class="topbar">
+  <div class="wrap">
+    <a class="back" href="index.html">← Back to reports</a>
+    <h1>Risk Signal Pipeline — Documentation</h1>
+    <div class="tagline">Investor protection. Market integrity.</div>
+  </div>
+</div>
+<main>
+  <div class="doc">
+<h1>risk-signal-pipeline</h1>
+<p>A pipeline that turns news coverage into risk signals. It fetches news articles for a set of enterprise and emerging risk search terms, scores their sentiment, enriches them with spaCy NLP, and groups them into topics through clustering.</p>
+<h2>Pipeline stages</h2>
+<ol><li><strong>Fetch</strong> — pull recent articles for each risk search term from the newsdata.io API,</li></ol>
+<p>   parse them with <code>newspaper3k</code>, and score sentiment with VADER.</p>
+<ol><li><strong>Sentiment</strong> — each article is labeled Positive / Negative / Neutral with a compound</li></ol>
+<p>   score.</p>
+<ol><li><strong>spaCy NLP</strong> — extract named entities (organizations, people, places, groups, laws) and</li></ol>
+<p>   cleaned noun-phrase keywords from article text (<code>spacy_enrichment.py</code>).</p>
+<ol><li><strong>Topic clustering</strong> — embed articles with <code>sentence-transformers</code>, cluster them into</li></ol>
+<p>   topics with BERTopic, and surface which risks cluster together (<code>topic_clustering.py</code>).</p>
+<ol><li><strong>Content quality</strong> — score each article 0–1 on how substantive it is, penalizing</li></ol>
+<p>   press-release / wire boilerplate, templated digests, and thin text (<code>content_quality.py</code>).    Fills the previously-unused <code>QUALITY_SCORE</code> column.</p>
+<ol><li><strong>Trend tracking</strong> — bin each topic's articles by month and score month-over-month</li></ol>
+<p>   *signal intensity*, so growing or fading themes stand out (<code>topic_trends.py</code>).</p>
+<ol><li><strong>Taxonomy gaps</strong> — measure how loosely each topic fits the risk that surfaced it</li></ol>
+<p>   (embedding distance) plus novelty, to flag possible uncovered risk aspects (<code>topic_gaps.py</code>).</p>
+<ol><li><strong>Report</strong> — build standalone, interactive HTML explorers (topics, trends, gaps, and a</li></ol>
+<p>   methodology tab) in <code>reports/</code>, with a landing-page <code>index.html</code> (<code>build_report.py</code>,    <code>build_index.py</code>).</p>
+<blockquote>All stages are implemented. Stage 1–2 run in <code>news_sentiment_scraper.py</code>; stages 3–5 run in <code>topic_clustering.py</code> (which invokes <code>spacy_enrichment.py</code> and <code>content_quality.py</code>); stage 6 in <code>topic_trends.py</code>; stage 7 in <code>topic_gaps.py</code>; stage 8 in <code>build_report.py</code> + <code>build_index.py</code>. Data CSVs are written to <code>output/</code>; publishable HTML reports to <code>reports/</code>.</blockquote>
+<h3>How the topic stage works</h3>
+<p><code>topic_clustering.py</code> reads a sentiment CSV, then:</p>
+<ul><li>runs each article's title + summary through <strong>spaCy</strong> to pull named entities and</li></ul>
+<p>  noun-phrase keywords (<a href="https://spacy.io/" target="_blank" rel="noopener">spacy.io</a>),</p>
+<ul><li>embeds the same text with <strong>sentence-transformers</strong> so semantically similar stories sit</li></ul>
+<p>  close together (<a href="https://sbert.net/" target="_blank" rel="noopener">sbert.net</a>); embeddings are <strong>cached to disk</strong>   (<code>output/.emb_cache/</code>) so re-runs only embed new articles,</p>
+<ul><li>collapses <strong>near-duplicate</strong> syndicated reprints (cosine ≥ <code>DUP_SIMILARITY</code>, default 0.93)</li></ul>
+<p>  so a wire story republished across many outlets counts once,</p>
+<ul><li>clusters the distinct stories with <strong>BERTopic</strong> to form interpretable topics</li></ul>
+<p>  (<a href="https://maartengr.github.io/BERTopic/index.html" target="_blank" rel="noopener">BERTopic docs</a>), optionally reducing to   <code>--nr-topics</code> themes.</p>
+<p>Clustering parameters (UMAP neighbors, HDBSCAN cluster size) scale with the number of articles, so the stage works on both small samples and larger production runs. The per-article output adds <code>DUP_GROUP</code> / <code>IS_DUPLICATE</code>; the summary adds <code>DISTINCT_STORIES</code>.</p>
+<p><strong>Options:</strong> <code>--nr-topics &lt;int|auto&gt;</code> merges the long tail of tiny topics into fewer, cleaner themes (a fixed integer like <code>60</code> is recommended over <code>auto</code>, which can over-merge into one catch-all). <code>--days N</code> clusters only the last N days. <code>DUP_SIMILARITY</code> (env var) tunes the near-duplicate threshold; delete <code>output/.emb_cache/</code> to force a full re-embed.</p>
+<h3>How the trend stage works</h3>
+<p>The goal is to see whether risk-related themes are <strong>growing or fading over time</strong>, and to spot emerging aspects of risk the current taxonomy may not capture. To keep topic IDs comparable across months, <code>topic_trends.py</code> uses the topics from a single full-history clustering run, then bins each topic's articles by calendar month and scores a composite <strong>signal intensity</strong> per topic per month:</p>
+<pre><code>volume       = number of articles for the topic that month
+neg_share    = fraction of those articles labeled Negative
+avg_compound = mean VADER compound score that month (-1..+1)
+severity     = 1 + neg_share + max(0, -avg_compound)      (&gt;= 1)
+intensity    = volume * severity</code></pre>
+<p>So a negative surge scores higher than a neutral one of equal volume, while intensity never falls below raw volume. Per topic it also computes a trend slope, recent <strong>momentum</strong> (last 3 months vs the prior 3), and peak month/intensity. The outlier cluster is always excluded, and boilerplate / low-signal topics (overwhelmingly neutral and thinly spread) are flagged <code>IS_BENIGN</code> so they can be dropped from the view.</p>
+<h3>How the taxonomy-gap stage works</h3>
+<p><code>topic_gaps.py</code> looks for <strong>aspects of risk not captured by the current taxonomy</strong>. Every topic is tied to a risk only because that risk's search terms surfaced it — so a topic can be intense yet fit that risk poorly. It embeds each topic's centroid and every risk's search terms, then <strong>calibrates</strong> the fit:</p>
+<pre><code>fit_percentile = fraction of risks the assigned-risk fit beats
+gap            = 1 - fit_percentile</code></pre>
+<p>A raw cosine gap is inflated for every topic (a topic centroid and a short search phrase embed far apart), so calibrating against the all-risk distribution makes the gap *relative*: a high gap means several other risks match the topic better than the one that surfaced it. When a different risk fits best, it's reported as <code>BETTER_FIT_RISK</code>. The <code>EMERGING_GAP_SCORE</code> combines the calibrated gap, distinct-story intensity, and a recency boost for newly-appearing topics. Low-quality topics are dropped via <code>--min-quality</code> (default 0.5; 0.6 recommended). Both the calibrated <code>GAP</code> and the raw <code>GAP_RAW</code> are written for comparison.</p>
+<h2>Project layout</h2>
+<pre><code>.
+├── news_sentiment_scraper.py   # fetch + sentiment (stages 1-2)
+├── spacy_enrichment.py         # spaCy entity + keyword enrichment (stage 3)
+├── content_quality.py          # article quality scoring (stage 5)
+├── topic_clustering.py         # sentence-transformers + BERTopic + quality (stages 3-5)
+├── topic_trends.py             # monthly signal-intensity trends (stage 6)
+├── topic_gaps.py               # taxonomy-fit / novelty scoring (stage 7)
+├── build_report.py             # interactive HTML reports (stage 8)
+├── build_index.py              # landing-page index over the reports
+├── download_model.py           # fetch embedding model for offline use
+├── data/                       # encoded risk search-term lists
+│   ├── EnterpriseRisksListEncoded.csv
+│   └── EmergingRisksListEncoded.csv
+├── output/                     # generated CSVs (sentiment, topics, trends, gaps)
+├── reports/                    # publishable HTML reports + index.html
+├── tests/                      # test suite
+├── .github/workflows/          # CI / scheduled runs
+└── requirements.txt</code></pre>
+<h2>Setup</h2>
+<pre><code>python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# one-time: download the spaCy English model used by the topic stage
+python -m spacy download en_core_web_sm</code></pre>
+<h3>Embedding model (offline / restricted networks)</h3>
+<p>The topic stage embeds articles with the <code>all-MiniLM-L6-v2</code> sentence-transformers model. It is normally downloaded from Hugging Face on first use. On networks where <code>huggingface.co</code> is blocked or returning errors, fetch a local copy once:</p>
+<pre><code>python download_model.py</code></pre>
+<p>This creates an <code>all-MiniLM-L6-v2-local/</code> folder that <code>topic_clustering.py</code> discovers automatically and loads fully offline. You can also point at any local model folder or hub name with the <code>EMBEDDING_MODEL</code> / <code>LOCAL_EMBEDDING_MODEL</code> environment variables.</p>
+<h2>Usage</h2>
+<p>The scraper needs a newsdata.io API key in the <code>NEWS_DATA_API_KEY</code> environment variable.</p>
+<pre><code>$env:NEWS_DATA_API_KEY = &quot;your-api-key&quot;
+
+# fetch + score enterprise risk news
+python news_sentiment_scraper.py --risk-type enterprise
+
+# or emerging risk news
+python news_sentiment_scraper.py --risk-type emerging</code></pre>
+<p>Results are written to <code>output/enterprise_risks_online_sentiment.csv</code> or <code>output/emerging_risks_online_sentiment.csv</code>. Re-runs append and de-duplicate by article link.</p>
+<h3>Output columns</h3>
+<table><thead><tr><th>Column</th><th>Description</th></tr></thead><tbody><tr><td>RISK_ID</td><td>Risk identifier the article was matched to</td></tr><tr><td>SEARCH_TERM_ID</td><td>Search term that surfaced the article</td></tr><tr><td>TITLE / LINK</td><td>Article headline and URL</td></tr><tr><td>PUBLISHED_DATE</td><td>Publish date reported by the source</td></tr><tr><td>SUMMARY / KEYWORDS</td><td>Extracted summary and keywords</td></tr><tr><td>SENTIMENT_COMPOUND</td><td>VADER compound score</td></tr><tr><td>SENTIMENT</td><td>Positive / Negative / Neutral label</td></tr><tr><td>SOURCE</td><td>Publisher domain</td></tr></tbody></table>
+<h3>Topic clustering</h3>
+<p>Once a sentiment CSV exists, cluster it into topics:</p>
+<pre><code># uses output/enterprise_risks_online_sentiment.csv
+python topic_clustering.py --risk-type enterprise
+
+# or emerging
+python topic_clustering.py --risk-type emerging
+
+# reduce the long tail of tiny topics into ~60 cleaner themes (recommended)
+python topic_clustering.py --risk-type enterprise --nr-topics 60
+
+# or point at any sentiment CSV directly
+python topic_clustering.py --input output/enterprise_risks_online_sentiment.csv</code></pre>
+<p>This writes two files per risk type:</p>
+<ul><li><code>output/&lt;type&gt;_risks_topics.csv</code> — every article with its assigned <code>TOPIC_ID</code>,</li></ul>
+<p>  <code>TOPIC_LABEL</code>, a readable <code>TOPIC_DESCRIPTION</code>, spaCy <code>ENTITIES</code>, and <code>NLP_KEYWORDS</code>.</p>
+<ul><li><code>output/&lt;type&gt;_risks_topic_summary.csv</code> — one row per topic with article count,</li></ul>
+<p>  which <code>RISK_IDS</code> fall into it, the dominant sentiment, top keywords / entities, and a   generated <code>TOPIC_DESCRIPTION</code>.</p>
+<p>The topic summary is the quickest way to see clusters of risk: topics spanning several distinct <code>RISK_IDS</code> point to themes that cut across the risk landscape.</p>
+<p>Add <code>--days 30</code> to cluster only the last N days (anchored to the most recent article date); outputs get a <code>_last30d</code> suffix. Set <code>EMBEDDING_MODEL</code> to swap the sentence-transformers model (defaults to <code>all-MiniLM-L6-v2</code>).</p>
+<h3>Trend tracking</h3>
+<p>Cluster the <strong>full history</strong> first (no <code>--days</code>), then build monthly trends:</p>
+<pre><code>python topic_trends.py --risk-type enterprise
+python topic_trends.py --risk-type emerging
+
+# exclude boilerplate / low-signal topics
+python topic_trends.py --risk-type emerging --drop-benign</code></pre>
+<p>This writes:</p>
+<ul><li><code>output/&lt;type&gt;_risks_trends.csv</code> — one row per (topic, month) with <code>volume</code>, <code>neg_share</code>,</li></ul>
+<p>  <code>avg_compound</code>, <code>share_of_coverage</code>, <code>severity</code>, and composite <code>intensity</code>.</p>
+<ul><li><code>output/&lt;type&gt;_risks_trends_topics.csv</code> — one row per topic with <code>PEAK_MONTH</code>,</li></ul>
+<p>  <code>PEAK_INTENSITY</code>, <code>TREND_SLOPE</code>, <code>MOMENTUM</code>, and the <code>IS_BENIGN</code> flag.</p>
+<p>The console prints the topics with the strongest recent momentum — the emerging signals worth a closer look.</p>
+<h3>Interactive report</h3>
+<p>Build a standalone HTML explorer (embeds its data; no server or internet needed):</p>
+<pre><code># picks up the topic + trend CSVs for the risk type automatically
+python build_report.py --risk-type enterprise
+python build_report.py --risk-type emerging</code></pre>
+<p>The report has two tabs:</p>
+<ul><li><strong>Topics</strong> — searchable, filterable topic cards (by risk, sentiment) with descriptions,</li></ul>
+<p>  keyword / entity chips, and drill-in to the underlying articles.</p>
+<ul><li><strong>Trends over time</strong> — per-risk line charts of top topics' monthly signal intensity, a</li></ul>
+<p>  "strongest rising signals" callout, and a toggle to hide benign topics.</p>
+<p>Pass <code>--trends &lt;csv&gt;</code> (or <code>--topics/--summary</code>) to point at specific files, or omit trends to build a topics-only report.</p>
+<h2>License</h2>
+<p>MIT — see <a href="LICENSE" target="_blank" rel="noopener">LICENSE</a>.</p>
+  </div>
+</main>
+<footer>Rendered from README.md · Generated 2026-09-23 09:46 · self-contained HTML.</footer>
+</body>
+</html>
