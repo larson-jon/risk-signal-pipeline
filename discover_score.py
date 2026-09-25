@@ -69,7 +69,7 @@ def load_all_risk_vectors(model):
     return np.vstack(rows), meta
 
 
-def run(input_path, out_path, nr_topics, min_quality):
+def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
     input_path = Path(input_path)
     if not input_path.exists():
         print(f"ERROR: discovery corpus not found: {input_path}")
@@ -78,6 +78,20 @@ def run(input_path, out_path, nr_topics, min_quality):
 
     df = pd.read_csv(input_path)
     print(f"Loaded {len(df)} discovery articles from {input_path}")
+
+    # Filter by fetch method. The risk-LEXICON stream (queries the language of
+    # risk) yields far more risk-relevant themes than the broad CATEGORY sweep,
+    # so it's the default. A source comparison showed category-only adds mostly
+    # benign general news (sports, entertainment, weather).
+    if source != "all" and "SEARCH_TERM_ID" in df.columns:
+        tag = "LEXICON" if source == "lexicon" else "DISCOVERY"
+        before = len(df)
+        df = df[df["SEARCH_TERM_ID"] == tag].copy()
+        print(f"Source filter '{source}': kept {len(df)} of {before} articles "
+              f"(SEARCH_TERM_ID == {tag}).")
+    elif source != "all":
+        print(f"NOTE: no SEARCH_TERM_ID column; using all {len(df)} articles.")
+
     if len(df) < 5:
         print("Too few articles to cluster meaningfully.")
         sys.exit(0)
@@ -205,6 +219,10 @@ def parse_args():
     p.add_argument("--nr-topics", dest="nr_topics", default=40,
                    help="Reduce to this many topics (int or 'auto').")
     p.add_argument("--min-quality", type=float, default=0.6, dest="min_quality")
+    p.add_argument("--source", choices=["lexicon", "category", "all"], default="lexicon",
+                   help="Which fetched articles to score: 'lexicon' (risk-phrase "
+                        "queries, default - most risk-relevant), 'category' (broad "
+                        "sweep), or 'all'.")
     return p.parse_args()
 
 
@@ -218,8 +236,9 @@ def main():
             nr_topics = None
     print("#" * 60)
     print("RISK DISCOVERY SCORING (novelty vs. full taxonomy)")
+    print(f"Source: {args.source}")
     print("#" * 60)
-    run(args.input, args.out, nr_topics, args.min_quality)
+    run(args.input, args.out, nr_topics, args.min_quality, source=args.source)
     print("Done.")
 
 
