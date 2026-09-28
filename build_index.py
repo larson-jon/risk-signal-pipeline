@@ -261,6 +261,119 @@ def build_readme_page(out_dir):
     return out
 
 
+# Terms that mark a cluster as broad / benign lifestyle-entertainment news rather
+# than a candidate risk. Matched (case-insensitive, word-ish) against the topic
+# title + description. Kept deliberately conservative so real risks aren't hidden.
+_BENIGN_TERMS = [
+    "season", "football", "nfl", "game", "week ", "movie", "movies", "series",
+    "film", "film tv", "audiovisual", "basque", "load browser", "javascript",
+    "browser", "network issues", "cleaning", "scorpio", "leo", "zodiac",
+    "horoscope", "celebrity", "prime day", "iphone", "trailer", "box office",
+    "streaming", "album", "recipe",
+]
+
+
+def _classify_discovery_topics(csv_path="output/discovery_ranked.csv"):
+    """Read discovery_ranked.csv and split topics into two tiers:
+    'meaningful' candidate risks vs 'broad/benign' clusters.
+
+    Returns (meaningful, benign) lists of dicts, or (None, None) if the ranked
+    CSV is absent (e.g. in CI where it's gitignored). Classification is a
+    conservative keyword gate on the topic title/description; anything not
+    obviously lifestyle/entertainment/technical-noise stays in 'meaningful' for
+    analyst review.
+    """
+    path = Path(csv_path)
+    if not path.exists():
+        return None, None
+    try:
+        import pandas as pd
+        df = pd.read_csv(path)
+    except Exception:
+        return None, None
+
+    def is_benign(row):
+        blob = f"{row.get('TOPIC_TITLE', '')} {row.get('TOPIC_DESCRIPTION', '')}".lower()
+        return any(term in blob for term in _BENIGN_TERMS)
+
+    meaningful, benign = [], []
+    for _, row in df.iterrows():
+        item = {
+            "title": str(row.get("TOPIC_TITLE", "")).strip(),
+            "desc": str(row.get("TOPIC_DESCRIPTION", "")).strip(),
+            "stories": int(row.get("DISTINCT_STORIES", 0) or 0),
+            "novelty": float(row.get("NOVELTY", 0) or 0),
+            "near_label": str(row.get("NEAREST_RISK_LABEL", "")).strip(),
+            "near_sim": float(row.get("NEAREST_RISK_SIM", 0) or 0),
+            "score": float(row.get("DISCOVERY_SCORE", 0) or 0),
+        }
+        (benign if is_benign(row) else meaningful).append(item)
+
+    meaningful.sort(key=lambda x: x["score"], reverse=True)
+    benign.sort(key=lambda x: x["score"], reverse=True)
+    return meaningful, benign
+
+
+def _clean_desc(desc):
+    """Trim the auto-generated description down to its human-readable lede."""
+    # Drop the boilerplate "Linked to risk -1." tail if present.
+    desc = re.sub(r"\s*Linked to risk[^.]*\.\s*$", "", desc).strip()
+    return desc
+
+
+def _candidate_row(item):
+    import html as _html
+    title = _html.escape(item["title"])
+    desc = _html.escape(_clean_desc(item["desc"]))
+    nov_pct = f"{item['novelty'] * 100:.0f}%"
+    near = _html.escape(item["near_label"]) or "—"
+    near_pct = f"{item['near_sim'] * 100:.0f}%"
+    return f"""      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">{title}</span>
+          <span class="cand-metrics">{item['stories']:,} stories · novelty {nov_pct}</span>
+        </div>
+        <div class="cand-desc">{desc}</div>
+        <div class="cand-near">Nearest known risk: <b>{near}</b> ({near_pct} similar)</div>
+      </div>"""
+
+
+def _render_candidates():
+    """Build the 'Candidate emerging risks' section HTML from the ranked CSV."""
+    meaningful, benign = _classify_discovery_topics()
+    if meaningful is None:
+        return ('<div class="panel"><p class="note">No scored discovery clusters yet. '
+                'Run <code>python discover_score.py</code> once the discovery corpus has '
+                'accumulated to generate a candidate list here.</p></div>')
+
+    if meaningful:
+        m_rows = "\n".join(_candidate_row(i) for i in meaningful)
+    else:
+        m_rows = '<p class="note">No meaningful candidates in the current run.</p>'
+    if benign:
+        b_rows = "\n".join(_candidate_row(i) for i in benign)
+    else:
+        b_rows = '<p class="note">No broad/benign clusters in the current run.</p>'
+
+    return f"""  <h2>Candidate emerging risks <span class="review-flag">analyst review required</span></h2>
+  <p>The latest discovery run clustered into the themes below and split them into two tiers by
+  automated judgment. <b>Meaningful candidates</b> are risk-shaped themes worth a look;
+  <b>broad / benign</b> clusters are prominent-but-unremarkable lifestyle, entertainment, or
+  technical-noise groupings kept for transparency. This is a shortlist for review, not a
+  finished risk list.</p>
+
+  <div class="panel tier-meaningful">
+    <h3 class="tier-h">Meaningful candidates <span class="count">{len(meaningful)}</span></h3>
+{m_rows}
+  </div>
+
+  <div class="panel tier-benign">
+    <h3 class="tier-h muted-h">Broad / benign clusters <span class="count">{len(benign)}</span></h3>
+{b_rows}
+  </div>
+"""
+
+
 def build_discovery_page(out_dir):
     """Write reports/discovery.html explaining the risk-discovery collection."""
     try:
@@ -273,6 +386,7 @@ def build_discovery_page(out_dir):
 
     lex_chips = "".join(f'<span class="chip">{t}</span>' for t in RISK_LEXICON)
     cat_chips = "".join(f'<span class="chip">{c}</span>' for c in DEFAULT_CATEGORIES)
+    candidates = _render_candidates()
 
     if s["exists"]:
         method_bits = " · ".join(f"{v:,} {k.lower()}" for k, v in s["by_method"].items())
@@ -289,6 +403,7 @@ def build_discovery_page(out_dir):
     html = html.replace("__CAT_CHIPS__", cat_chips or "<span class='muted'>(none)</span>")
     html = html.replace("__LEX_COUNT__", str(len(RISK_LEXICON)))
     html = html.replace("__CORPUS__", corpus)
+    html = html.replace("__CANDIDATES__", candidates)
     html = html.replace("__GENERATED__", generated)
 
     out = Path(out_dir) / "discovery.html"
@@ -447,6 +562,26 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
   .method h3 { margin: 0 0 4px; font-size: 15px; color: var(--core); font-weight: 700; }
   code { background: var(--panel2); border-radius: 4px; padding: 1px 6px; font-size: 13px; }
   .note { color: var(--muted); font-size: 13px; }
+  /* Candidate emerging risks */
+  .review-flag { display: inline-block; vertical-align: middle; margin-left: 8px;
+    background: var(--yellow); color: #5a4a00; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em; border-radius: 999px; padding: 2px 10px; }
+  .tier-meaningful { border-left: 4px solid var(--green); }
+  .tier-benign { border-left: 4px solid var(--border); background: #fafbfc; }
+  .tier-h { font-size: 15px; font-weight: 800; color: var(--core); margin: 2px 0 12px; }
+  .tier-h.muted-h { color: var(--muted); }
+  .tier-h .count { display: inline-block; margin-left: 8px; background: var(--panel2);
+    border: 1px solid var(--border); color: var(--gray); border-radius: 999px;
+    padding: 1px 9px; font-size: 12px; font-weight: 700; }
+  .cand { padding: 11px 0; border-top: 1px solid var(--border); }
+  .cand:first-of-type { border-top: none; }
+  .cand-head { display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; flex-wrap: wrap; }
+  .cand-title { font-weight: 700; color: var(--core); font-size: 14.5px; }
+  .cand-metrics { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+  .cand-desc { color: var(--text); font-size: 13.5px; margin: 3px 0 4px; max-width: 72ch; }
+  .cand-near { color: var(--muted); font-size: 12.5px; }
+  .cand-near b { color: var(--gray); }
   footer { max-width: 820px; margin: 0 auto; padding: 20px 24px 40px;
     color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
 </style>
@@ -514,6 +649,8 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
   <p class="note" style="margin-top:20px">Discovery is intentionally a wide, lower-precision net:
   it surfaces a ranked shortlist for human review, not a finished answer. Precision improves as
   the corpus accumulates across more days.</p>
+
+__CANDIDATES__
 
 </main>
 <footer>Generated __GENERATED__ · self-contained HTML, no external dependencies.</footer>
