@@ -75,8 +75,9 @@
     <div class="tagline">Investor protection. Market integrity.</div>
     <p class="lede">The main pipeline only ever sees news that matched one of our existing risk
     search terms — so by design it can't reveal a risk we never thought to search for. Risk
-    discovery closes that blind spot: it collects a broad stream of news chosen <i>without</i>
-    reference to our risk list, so we can later surface coherent, significant themes that sit far
+    discovery closes that blind spot: it collects news by searching for the <i>language of risk
+    itself</i> — phrases like "regulators warn" or "emerging threat" that describe a risk
+    surfacing, regardless of subject — so we can flag coherent, significant themes that sit far
     from every risk we currently track.</p>
   </div>
 </div>
@@ -84,30 +85,22 @@
 
   <div class="panel">
     <h2>What we're collecting</h2>
-    <div class="statline"><b>6,451</b> articles collected so far · 273 distinct sources · latest 2026-09-27</div><div class="statline muted">By method: 4,238 discovery · 2,213 lexicon</div>
+    <div class="statline"><b>2,213</b> risk-lexicon articles collected so far · 230 distinct sources · latest 2026-09-27</div>
     <p class="note">Because the news plan serves only the last ~48 hours per request, the corpus
     accumulates forward over time — each scheduled run adds new, de-duplicated stories rather
     than reaching back into history.</p>
   </div>
 
-  <h2>Two collection methods</h2>
-  <p>Each scheduled run gathers news two complementary ways, both un-tied to our risk list:</p>
+  <h2>How we collect: risk-lexicon search (21 phrases)</h2>
+  <p>Each scheduled run searches for the <b>language of risk itself</b> — phrases that tend to
+  describe a risk becoming a concern, regardless of subject. This surfaces risk-shaped stories
+  on any topic without pre-naming any of them, and does it <i>without</i> reference to our
+  existing risk list. Phrases are favored over bare words (<code>"regulators warn"</code> is far
+  more precise than <code>"risk"</code>).</p>
 
   <div class="panel">
     <div class="method">
-      <h3>1 · Broad category sweep</h3>
-      <p>Pulls top-tier news across broad categories with <b>no keyword filter at all</b> — a
-      wide net for whatever is prominent. Category sets rotate across runs (the news API allows
-      up to 5 per request), so coverage widens over time.</p>
-      <div class="chips"><span class="chip">business</span><span class="chip">politics</span><span class="chip">technology</span><span class="chip">world</span></div>
-    </div>
-
-    <div class="method">
-      <h3>2 · Risk-lexicon search (21 phrases)</h3>
-      <p>Searches for the <b>language of risk itself</b> — phrases that tend to describe a
-      risk becoming a concern, regardless of subject. This catches risk-shaped stories a plain
-      category sweep would bury. Phrases are favored over bare words (<code>"regulators warn"</code>
-      is far more precise than <code>"risk"</code>).</p>
+      <h3>Risk-indicator phrases we search</h3>
       <div class="chips"><span class="chip">emerging risk</span><span class="chip">systemic risk</span><span class="chip">unprecedented</span><span class="chip">first-of-its-kind</span><span class="chip">novel threat</span><span class="chip">unintended consequences</span><span class="chip">regulatory loophole</span><span class="chip">unregulated</span><span class="chip">regulatory gap</span><span class="chip">regulators warn</span><span class="chip">watchdog warns</span><span class="chip">SEC warns</span><span class="chip">warns of risk</span><span class="chip">flagged as a risk</span><span class="chip">under scrutiny</span><span class="chip">calls for regulation</span><span class="chip">growing threat</span><span class="chip">mounting concern</span><span class="chip">market disruption</span><span class="chip">vulnerability exposed</span><span class="chip">systemic threat</span></div>
     </div>
   </div>
@@ -394,6 +387,6 @@
 
 
 </main>
-<footer>Generated 2026-09-28 13:01 · self-contained HTML, no external dependencies.</footer>
+<footer>Generated 2026-09-28 13:12 · self-contained HTML, no external dependencies.</footer>
 </body>
 </html>

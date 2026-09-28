@@ -99,9 +99,9 @@ def _discovery_card(discovery_file):
     """A distinct card linking to the discovery explainer page."""
     return f"""    <a class="card discovery" href="{discovery_file}">
       <div class="card-title">Risk Discovery — finding risks off the list</div>
-      <div class="card-desc">How we collect broad, un-keyworded news to surface emerging
+      <div class="card-desc">How we search the language of risk to surface emerging
       risks the current taxonomy doesn't cover yet.</div>
-      <div class="card-meta">What we're collecting &amp; why</div>
+      <div class="card-meta">Candidate emerging risks &amp; how we find them</div>
       <div class="card-go">Learn more →</div>
     </a>"""
 
@@ -139,11 +139,18 @@ def _discovery_stats():
         import pandas as pd
         df = pd.read_csv(path)
         stats["total"] = len(df)
-        stats["sources"] = int(df["SOURCE"].nunique()) if "SOURCE" in df else 0
         if "SEARCH_TERM_ID" in df:
             stats["by_method"] = df["SEARCH_TERM_ID"].value_counts().to_dict()
-        if "PUBLISHED_DATE" in df:
-            d = pd.to_datetime(df["PUBLISHED_DATE"], errors="coerce").dropna()
+            # Discovery-tab metrics are scoped to the risk-lexicon corpus, since
+            # that is what feeds the candidate analysis. Fall back to the whole
+            # corpus if no rows are tagged LEXICON yet.
+            lex = df[df["SEARCH_TERM_ID"] == "LEXICON"]
+            scope = lex if len(lex) else df
+        else:
+            scope = df
+        stats["sources"] = int(scope["SOURCE"].nunique()) if "SOURCE" in scope else 0
+        if "PUBLISHED_DATE" in scope:
+            d = pd.to_datetime(scope["PUBLISHED_DATE"], errors="coerce").dropna()
             if len(d):
                 stats["latest"] = str(d.max())[:10]
     except Exception:
@@ -385,22 +392,19 @@ def build_discovery_page(out_dir):
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     lex_chips = "".join(f'<span class="chip">{t}</span>' for t in RISK_LEXICON)
-    cat_chips = "".join(f'<span class="chip">{c}</span>' for c in DEFAULT_CATEGORIES)
     candidates = _render_candidates()
 
     if s["exists"]:
-        method_bits = " · ".join(f"{v:,} {k.lower()}" for k, v in s["by_method"].items())
-        corpus = (f'<div class="statline"><b>{s["total"]:,}</b> articles collected so far'
+        lex_n = int(s["by_method"].get("LEXICON", 0))
+        corpus = (f'<div class="statline"><b>{lex_n:,}</b> risk-lexicon articles collected so far'
                   f' · {s["sources"]:,} distinct sources'
-                  f'{" · latest " + s["latest"] if s["latest"] else ""}</div>'
-                  f'<div class="statline muted">By method: {method_bits}</div>')
+                  f'{" · latest " + s["latest"] if s["latest"] else ""}</div>')
     else:
         corpus = ('<div class="statline muted">No discovery corpus yet — it builds up '
                   'as the scheduled fetches run.</div>')
 
     html = _DISCOVERY_TEMPLATE
     html = html.replace("__LEX_CHIPS__", lex_chips or "<span class='muted'>(none)</span>")
-    html = html.replace("__CAT_CHIPS__", cat_chips or "<span class='muted'>(none)</span>")
     html = html.replace("__LEX_COUNT__", str(len(RISK_LEXICON)))
     html = html.replace("__CORPUS__", corpus)
     html = html.replace("__CANDIDATES__", candidates)
@@ -596,8 +600,9 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
     <div class="tagline">Investor protection. Market integrity.</div>
     <p class="lede">The main pipeline only ever sees news that matched one of our existing risk
     search terms — so by design it can't reveal a risk we never thought to search for. Risk
-    discovery closes that blind spot: it collects a broad stream of news chosen <i>without</i>
-    reference to our risk list, so we can later surface coherent, significant themes that sit far
+    discovery closes that blind spot: it collects news by searching for the <i>language of risk
+    itself</i> — phrases like "regulators warn" or "emerging threat" that describe a risk
+    surfacing, regardless of subject — so we can flag coherent, significant themes that sit far
     from every risk we currently track.</p>
   </div>
 </div>
@@ -611,24 +616,16 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
     than reaching back into history.</p>
   </div>
 
-  <h2>Two collection methods</h2>
-  <p>Each scheduled run gathers news two complementary ways, both un-tied to our risk list:</p>
+  <h2>How we collect: risk-lexicon search (__LEX_COUNT__ phrases)</h2>
+  <p>Each scheduled run searches for the <b>language of risk itself</b> — phrases that tend to
+  describe a risk becoming a concern, regardless of subject. This surfaces risk-shaped stories
+  on any topic without pre-naming any of them, and does it <i>without</i> reference to our
+  existing risk list. Phrases are favored over bare words (<code>"regulators warn"</code> is far
+  more precise than <code>"risk"</code>).</p>
 
   <div class="panel">
     <div class="method">
-      <h3>1 · Broad category sweep</h3>
-      <p>Pulls top-tier news across broad categories with <b>no keyword filter at all</b> — a
-      wide net for whatever is prominent. Category sets rotate across runs (the news API allows
-      up to 5 per request), so coverage widens over time.</p>
-      <div class="chips">__CAT_CHIPS__</div>
-    </div>
-
-    <div class="method">
-      <h3>2 · Risk-lexicon search (__LEX_COUNT__ phrases)</h3>
-      <p>Searches for the <b>language of risk itself</b> — phrases that tend to describe a
-      risk becoming a concern, regardless of subject. This catches risk-shaped stories a plain
-      category sweep would bury. Phrases are favored over bare words (<code>"regulators warn"</code>
-      is far more precise than <code>"risk"</code>).</p>
+      <h3>Risk-indicator phrases we search</h3>
       <div class="chips">__LEX_CHIPS__</div>
     </div>
   </div>
