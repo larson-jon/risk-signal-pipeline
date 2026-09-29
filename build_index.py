@@ -117,11 +117,24 @@ def _readme_card(readme_file):
     </a>"""
 
 
-def build_html(reports, discovery_file=None, readme_file=None):
+def _faq_card(faq_file):
+    """A card linking to the plain-language FAQ page."""
+    return f"""    <a class="card faq" href="{faq_file}">
+      <div class="card-title">FAQ — plain-language answers</div>
+      <div class="card-desc">What this does, how far to trust it, and how to read the
+      output — for readers who don't work with the code. Covers the pipeline and risk discovery.</div>
+      <div class="card-meta">Non-technical overview</div>
+      <div class="card-go">Read the FAQ →</div>
+    </a>"""
+
+
+def build_html(reports, discovery_file=None, readme_file=None, faq_file=None):
     cards = "\n".join(_card(r) for r in reports) or \
         '<div class="empty">No reports found. Run build_report.py first.</div>'
     if discovery_file:
         cards += "\n" + _discovery_card(discovery_file)
+    if faq_file:
+        cards += "\n" + _faq_card(faq_file)
     if readme_file:
         cards += "\n" + _readme_card(readme_file)
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -416,14 +429,146 @@ def build_discovery_page(out_dir):
     return out
 
 
+# Plain-language FAQ aimed at non-technical readers (risk officers, execs,
+# auditors). Grouped into sections; each item is (question, answer). Answers
+# deliberately avoid jargon and are honest about limitations. Edit here to
+# change the FAQ — the page regenerates from this structure.
+_FAQ_SECTIONS = [
+    ("The big picture", [
+        ("In one sentence, what is this?",
+         "It reads the news every day and shows which risks the world is talking about, "
+         "whether that coverage is getting louder or quieter, and whether anything new is "
+         "surfacing that isn't on our risk list yet."),
+        ("Why do we need it — don't we already track these risks?",
+         "We track them by hand and on a review cycle. This watches continuously and "
+         "measures how much is being said and in what tone, so a rising theme shows up in "
+         "days rather than at the next scheduled review."),
+        ("What decision does it help with?",
+         "It gives risk staff an early-warning shortlist to help prioritize where to look. "
+         "It's a triage tool, not a verdict — a person confirms anything that matters."),
+        ("Is it making decisions on its own?",
+         "No. It ranks and summarizes news; people decide what to do about it."),
+    ]),
+    ("Can I trust it?", [
+        ("Where does the data come from?",
+         "A commercial news service (newsdata.io), filtered to US, English-language, "
+         "higher-authority outlets."),
+        ("How current is it, and how far back does it go?",
+         "It runs on a daily schedule. The news plan only serves roughly the last 48 hours "
+         "per request, so the collection builds up going forward over time rather than "
+         "reaching back into history."),
+        ("Is it reading whole articles or just headlines?",
+         "Mostly the headline and a short summary the news service supplies, not always the "
+         "full article body. That's a real limitation worth keeping in mind."),
+        ("How does it decide whether coverage is negative?",
+         "A standard, rule-based sentiment tool (VADER) labels each article positive, "
+         "negative, or neutral. It's reasonable at scale but misses sarcasm and nuance."),
+        ("How accurate is it? What's the error rate?",
+         "There's no labeled 'correct answer' to score against, so we can't quote a precision "
+         "figure. Treat it as a prompt to investigate, not proof — a clean-looking chart can "
+         "still rest on shallow scoring or thin summaries."),
+        ("Is our data going into ChatGPT or a public AI?",
+         "No. It uses local, open-source language models to group similar text. Nothing "
+         "proprietary is sent to an external AI service."),
+        ("Any privacy concerns?",
+         "It processes public news articles, not personal or customer data."),
+    ]),
+    ("How do I read the output?", [
+        ("What is a \u201ctopic\u201d?",
+         "A cluster of articles about the same thing, grouped automatically so you can read "
+         "one theme instead of hundreds of separate headlines."),
+        ("What's the difference between enterprise and emerging risks?",
+         "Enterprise risks are already on our official list; emerging risks are forward-looking "
+         "ones we're watching. Both run through the identical process — only the watch-list of "
+         "search terms differs."),
+        ("What is a \u201ctrend\u201d or \u201csignal\u201d?",
+         "Whether a topic's coverage is growing, fading, or spiking from month to month."),
+        ("What is a \u201cgap\u201d?",
+         "A topic that's prominent and recent but doesn't fit the risk it came in under — a "
+         "hint that our risk categories may be missing an angle."),
+    ]),
+    ("Risk discovery (finding risks off the list)", [
+        ("What is \u201crisk discovery\u201d and how is it different from the main pipeline?",
+         "The main pipeline only finds news that matches a risk we already search for, so by "
+         "design it can't reveal a risk nobody thought to look for. Discovery closes that blind "
+         "spot by collecting news a different way and flagging themes that sit far from every "
+         "risk we currently track."),
+        ("How does discovery find news without knowing what to look for?",
+         "It searches for the language of risk itself — phrases like \u201cregulators warn,\u201d "
+         "\u201cemerging risk,\u201d or \u201cunder scrutiny\u201d — which tend to describe a risk "
+         "surfacing regardless of the subject. That catches risk-shaped stories on any topic."),
+        ("What does \u201cnovelty\u201d mean on the discovery page?",
+         "How far a theme sits from every risk already on our list. High novelty means the "
+         "theme doesn't closely match anything we currently track — a candidate worth a look."),
+        ("What are \u201cmeaningful candidates\u201d versus \u201cbroad / benign\u201d clusters?",
+         "The discovery run groups news into themes and automatically separates risk-shaped "
+         "themes (meaningful candidates) from prominent-but-unremarkable ones like sports, "
+         "entertainment, or website error messages (broad / benign). The benign group is kept "
+         "for transparency, not because it's a risk."),
+        ("Is the discovery list a finished set of new risks?",
+         "No. It's a shortlist for a person to review, and it's intentionally a wide, "
+         "lower-precision net. It points to places to look; it doesn't decide what's a real "
+         "risk. Precision improves as more days of news accumulate."),
+        ("Why does discovery sometimes surface obvious noise?",
+         "Casting a wide net means some benign or off-topic clusters come through. That's "
+         "expected — they're separated out and labeled rather than hidden, so you can see "
+         "exactly what was set aside."),
+    ]),
+    ("Limits and what's next", [
+        ("Could it miss an important risk?",
+         "Yes. The main pipeline is limited to risks we already search for, and coverage is "
+         "US/English only. Discovery helps with the first blind spot but isn't exhaustive."),
+        ("How much manual work is left?",
+         "The candidate lists still need a human to review and confirm. It narrows the "
+         "haystack; it doesn't hand you the needle."),
+        ("What can't it do today?",
+         "Reliably read full article bodies, reach back into history, or cover non-English or "
+         "non-US news."),
+    ]),
+]
+
+
+def _render_faq(sections):
+    import html as _html
+    blocks = []
+    # table of contents
+    toc = " · ".join(
+        f'<a href="#sec{i}">{_html.escape(title)}</a>'
+        for i, (title, _) in enumerate(sections))
+    blocks.append(f'<div class="toc">{toc}</div>')
+    for i, (title, items) in enumerate(sections):
+        rows = []
+        for q, a in items:
+            rows.append(
+                f'<div class="qa"><div class="q">{_html.escape(q)}</div>'
+                f'<div class="a">{_html.escape(a)}</div></div>')
+        blocks.append(
+            f'<section id="sec{i}"><h2>{_html.escape(title)}</h2>'
+            f'<div class="panel">{"".join(rows)}</div></section>')
+    return "\n".join(blocks)
+
+
+def build_faq_page(out_dir):
+    """Write reports/faq.html: a plain-language FAQ for non-technical readers."""
+    body = _render_faq(_FAQ_SECTIONS)
+    generated = datetime.now().strftime("%Y-%m-%d %H:%M")
+    html = _FAQ_TEMPLATE.replace("__BODY__", body).replace("__GENERATED__", generated)
+    out = Path(out_dir) / "faq.html"
+    out.write_text(html, encoding="utf-8")
+    print(f"Wrote faq page -> {out}")
+    return out
+
+
 def run(report_dir, out_path):
     reports = collect(report_dir)
     # Build the explainer pages first so the index can link to them.
     disco = build_discovery_page(report_dir)
+    faq = build_faq_page(report_dir)
     readme = build_readme_page(report_dir)
     html = build_html(reports,
                       discovery_file=disco.name if disco else None,
-                      readme_file=readme.name if readme else None)
+                      readme_file=readme.name if readme else None,
+                      faq_file=faq.name if faq else None)
     out = Path(out_path)
     out.parent.mkdir(exist_ok=True)
     out.write_text(html, encoding="utf-8")
@@ -485,6 +630,8 @@ _TEMPLATE = r"""<!DOCTYPE html>
   .card-go { color: var(--accent); font-size: 13px; font-weight: 700; margin-top: 14px; }
   .card.discovery { border-left: 4px solid var(--green); }
   .card.discovery:hover { border-color: var(--green); border-left-color: var(--green); }
+  .card.faq { border-left: 4px solid var(--accent); }
+  .card.faq:hover { border-color: var(--accent); border-left-color: var(--accent); }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
   .how { background: #eef3fa; border: 1px solid var(--border); border-left: 4px solid var(--accent);
     border-radius: 8px; padding: 16px 20px; margin-top: 24px; color: #2b3a52; font-size: 13.5px; max-width: 78ch; }
@@ -726,6 +873,71 @@ __BODY__
   </div>
 </main>
 <footer>Rendered from README.md · Generated __GENERATED__ · self-contained HTML.</footer>
+</body>
+</html>
+"""
+
+
+_FAQ_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk Signal Pipeline — Frequently Asked Questions</title>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<style>
+  /* FINRA brand palette (light theme) */
+  :root {
+    --core: #233E66; --accent: #0082D1; --gray: #595959;
+    --green: #9EC405; --yellow: #FFCF40; --red: #FB483D;
+    --bg: #f4f6f9; --panel: #ffffff; --panel2: #eef3fa; --text: #333;
+    --muted: #6b7280; --border: #e2e6ec;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.65 'Open Sans', -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  .logoband { background: #fff; padding: 14px 24px; }
+  .logoband .logo { height: 46px; width: auto; display: block; }
+  .brandbar { height: 6px; background: var(--yellow); }
+  .topbar { background: var(--core); color: #fff; padding: 22px 24px; }
+  .topbar .wrap { max-width: 860px; margin: 0 auto; }
+  a.back { color: #cfe0f5; text-decoration: none; font-size: 13px; }
+  a.back:hover { text-decoration: underline; color: #fff; }
+  .topbar h1 { margin: 10px 0 4px; font-size: 24px; font-weight: 800; }
+  .tagline { color: #9db4d6; font-family: 'Lora', Georgia, serif; font-style: italic; font-size: 12px; }
+  .lede { color: #cfdaea; max-width: 74ch; margin-top: 10px; }
+  main { max-width: 860px; margin: 0 auto; padding: 12px 24px 60px; }
+  h2 { font-size: 18px; font-weight: 800; color: var(--core); margin: 30px 0 10px; }
+  .toc { background: #eef3fa; border: 1px solid var(--border); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 12px 16px; margin-top: 18px; font-size: 13.5px; line-height: 1.9; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 6px 22px; box-shadow: 0 1px 2px rgba(16,36,66,.05); }
+  .qa { padding: 16px 0; border-top: 1px solid var(--border); }
+  .qa:first-child { border-top: none; }
+  .q { font-weight: 700; color: var(--core); font-size: 15px; margin-bottom: 4px; }
+  .a { color: var(--text); font-size: 14px; max-width: 74ch; }
+  footer { max-width: 860px; margin: 0 auto; padding: 20px 24px 40px;
+    color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="logoband"><img class="logo" src="finra%20logo.png" alt="FINRA Enterprise Risk Management"></div>
+<div class="brandbar"></div>
+<div class="topbar">
+  <div class="wrap">
+    <a class="back" href="index.html">← Back to reports</a>
+    <h1>Frequently Asked Questions</h1>
+    <div class="tagline">Investor protection. Market integrity.</div>
+    <p class="lede">Plain-language answers about what this project does, how far to trust it,
+    and how to read its output — written for readers who don't work with the code.</p>
+  </div>
+</div>
+<main>
+__BODY__
+</main>
+<footer>Generated __GENERATED__ · self-contained HTML, no external dependencies.</footer>
 </body>
 </html>
 """
