@@ -23,3 +23,7 @@ bertopic>=0.16.0
 scikit-learn
 umap-learn
 hdbscan
+
+# Deck generation - make_overview_slide.py builds the FINRA-branded overview
+# PowerPoint onto the template in tests/. Only needed to (re)generate the slide.
+python-pptx>=1.0.0
