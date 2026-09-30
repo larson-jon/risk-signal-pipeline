@@ -318,19 +318,28 @@ def _classify_discovery_topics(csv_path="output/discovery_ranked.csv"):
 
     meaningful, benign = [], []
     for _, row in df.iterrows():
+        novelty = float(row.get("NOVELTY", 0) or 0)
+        finra = float(row.get("FINRA_RELEVANCE", 0) or 0)
         item = {
             "title": str(row.get("TOPIC_TITLE", "")).strip(),
             "desc": str(row.get("TOPIC_DESCRIPTION", "")).strip(),
             "stories": int(row.get("DISTINCT_STORIES", 0) or 0),
-            "novelty": float(row.get("NOVELTY", 0) or 0),
+            "novelty": novelty,
+            "finra": finra,
+            # Combined rank: reward themes strong on BOTH novelty and FINRA
+            # relevance. A product (not a sum) sinks anything near-zero on
+            # either axis — so high-novelty/zero-relevance noise (sports,
+            # entertainment) falls to the bottom, and the on-domain + new
+            # "sweet spot" themes rise to the top.
+            "combined": round(novelty * finra, 4),
             "near_label": str(row.get("NEAREST_RISK_LABEL", "")).strip(),
             "near_sim": float(row.get("NEAREST_RISK_SIM", 0) or 0),
             "score": float(row.get("DISCOVERY_SCORE", 0) or 0),
         }
         (benign if is_benign(row) else meaningful).append(item)
 
-    meaningful.sort(key=lambda x: x["score"], reverse=True)
-    benign.sort(key=lambda x: x["score"], reverse=True)
+    meaningful.sort(key=lambda x: x["combined"], reverse=True)
+    benign.sort(key=lambda x: x["combined"], reverse=True)
     return meaningful, benign
 
 
@@ -338,7 +347,19 @@ def _clean_desc(desc):
     """Trim the auto-generated description down to its human-readable lede."""
     # Drop the boilerplate "Linked to risk -1." tail if present.
     desc = re.sub(r"\s*Linked to risk[^.]*\.\s*$", "", desc).strip()
+    # Drop the trailing "(N articles)" count — the story count is already shown
+    # in the metrics line, so this is redundant.
+    desc = re.sub(r"\s*\(\d[\d,]*\s+articles\)", "", desc).strip()
     return desc
+
+
+def _finra_band(rel):
+    """Qualitative label for a FINRA-relevance score (0..~0.55 in practice)."""
+    if rel >= 0.30:
+        return "high"
+    if rel >= 0.15:
+        return "moderate"
+    return "low"
 
 
 def _candidate_row(item):
@@ -346,16 +367,147 @@ def _candidate_row(item):
     title = _html.escape(item["title"])
     desc = _html.escape(_clean_desc(item["desc"]))
     nov_pct = f"{item['novelty'] * 100:.0f}%"
+    fin_pct = f"{item['finra'] * 100:.0f}%"
+    band = _finra_band(item["finra"])
     near = _html.escape(item["near_label"]) or "—"
     near_pct = f"{item['near_sim'] * 100:.0f}%"
     return f"""      <div class="cand">
         <div class="cand-head">
           <span class="cand-title">{title}</span>
-          <span class="cand-metrics">{item['stories']:,} stories · novelty {nov_pct}</span>
+          <span class="cand-metrics">{item['stories']:,} stories · novelty {nov_pct} · FINRA relevance {fin_pct} ({band})</span>
         </div>
         <div class="cand-desc">{desc}</div>
         <div class="cand-near">Nearest known risk: <b>{near}</b> ({near_pct} similar)</div>
       </div>"""
+
+
+def _render_novelty_relevance_plot(csv_path="output/discovery_ranked.csv"):
+    """SVG scatter of discovery clusters: novelty (y) vs FINRA-relevance (x).
+
+    Quadrants read as: top-right = novel AND on-domain (emerging-FINRA-risk
+    sweet spot); top-left = novel but off-topic noise; bottom-right = on-domain
+    but already close to a known risk; bottom-left = neither. Returns '' if the
+    ranked CSV is missing or lacks the FINRA_RELEVANCE column.
+    """
+    import html as _html
+    path = Path(csv_path)
+    if not path.exists():
+        return ""
+    try:
+        import pandas as pd
+        df = pd.read_csv(path)
+    except Exception:
+        return ""
+    if "FINRA_RELEVANCE" not in df.columns or df.empty:
+        return ""
+
+    pts = []
+    for _, r in df.iterrows():
+        pts.append({
+            "title": str(r.get("TOPIC_TITLE", "")).strip(),
+            "x": max(0.0, float(r.get("FINRA_RELEVANCE", 0) or 0)),   # relevance
+            "y": max(0.0, float(r.get("NOVELTY", 0) or 0)),           # novelty
+            "stories": int(r.get("DISTINCT_STORIES", 0) or 0),
+        })
+    if not pts:
+        return ""
+
+    # Geometry
+    W, H = 720, 470
+    ml, mr, mt, mb = 62, 24, 24, 54
+    pw, ph = W - ml - mr, H - mt - mb
+
+    # Axes: novelty is naturally 0..1; relevance compresses low, so scale x to
+    # the data (with headroom) and mark the mid-line at half the max.
+    x_max = max(0.55, min(1.0, max(p["x"] for p in pts) * 1.15))
+    y_max = 1.0
+    x_mid = x_max / 2.0
+    y_mid = 0.5
+
+    def sx(x):
+        return ml + (x / x_max) * pw
+
+    def sy(y):
+        return mt + (1 - y / y_max) * ph
+
+    # radius by distinct-story volume (sqrt scale), 4..12 px
+    smax = max(p["stories"] for p in pts) or 1
+    def rad(s):
+        return 4 + 8 * ((s / smax) ** 0.5)
+
+    parts = [f'<svg viewBox="0 0 {W} {H}" class="nrplot" role="img" '
+             f'aria-label="Novelty versus FINRA-relevance scatter plot of discovery clusters">']
+
+    # quadrant background: shade the top-right (sweet spot) faint green
+    parts.append(f'<rect x="{sx(x_mid):.1f}" y="{mt}" width="{ml+pw-sx(x_mid):.1f}" '
+                 f'height="{sy(y_mid)-mt:.1f}" fill="#9EC405" opacity="0.10"/>')
+    # plot border
+    parts.append(f'<rect x="{ml}" y="{mt}" width="{pw}" height="{ph}" fill="#ffffff" '
+                 f'stroke="#e2e6ec"/>')
+    # mid gridlines
+    parts.append(f'<line x1="{sx(x_mid):.1f}" y1="{mt}" x2="{sx(x_mid):.1f}" y2="{mt+ph}" '
+                 f'stroke="#e2e6ec" stroke-dasharray="4 4"/>')
+    parts.append(f'<line x1="{ml}" y1="{sy(y_mid):.1f}" x2="{ml+pw}" y2="{sy(y_mid):.1f}" '
+                 f'stroke="#e2e6ec" stroke-dasharray="4 4"/>')
+
+    # quadrant labels
+    parts.append(f'<text x="{ml+pw-6}" y="{mt+16}" text-anchor="end" '
+                 f'fill="#5a7d12" font-size="11" font-weight="700">Novel &amp; on-domain</text>')
+    parts.append(f'<text x="{ml+6}" y="{mt+16}" fill="#9aa2ad" font-size="11">'
+                 f'Novel, off-topic</text>')
+    parts.append(f'<text x="{ml+pw-6}" y="{mt+ph-8}" text-anchor="end" fill="#9aa2ad" '
+                 f'font-size="11">On-domain, known</text>')
+
+    # axis labels
+    parts.append(f'<text x="{ml+pw/2:.0f}" y="{H-14}" text-anchor="middle" fill="#233E66" '
+                 f'font-size="12" font-weight="700">FINRA relevance  →</text>')
+    parts.append(f'<text x="16" y="{mt+ph/2:.0f}" text-anchor="middle" fill="#233E66" '
+                 f'font-size="12" font-weight="700" transform="rotate(-90 16 {mt+ph/2:.0f})">'
+                 f'Novelty (distance from known risks)  →</text>')
+    # axis ticks
+    for f in (0, 0.5, 1.0):
+        yy = sy(f)
+        parts.append(f'<text x="{ml-8}" y="{yy+3:.1f}" text-anchor="end" fill="#6b7280" '
+                     f'font-size="9">{f:.1f}</text>')
+    for f in (0.0, x_mid, x_max):
+        xx = sx(f)
+        parts.append(f'<text x="{xx:.1f}" y="{mt+ph+16}" text-anchor="middle" fill="#6b7280" '
+                     f'font-size="9">{f:.2f}</text>')
+
+    # points; label the standouts (top-right sweet spot, by x*y), cap labels
+    scored = sorted(pts, key=lambda p: p["x"] * p["y"], reverse=True)
+    label_titles = {id(p) for p in scored[:6]}
+    for p in pts:
+        cx, cy, rr = sx(p["x"]), sy(p["y"]), rad(p["stories"])
+        # color: green if in sweet spot, else accent blue, muted if low relevance
+        if p["x"] >= x_mid and p["y"] >= y_mid:
+            fill, stroke = "#9EC405", "#5a7d12"
+        elif p["x"] < x_mid * 0.5:
+            fill, stroke = "#c7cdd6", "#9aa2ad"
+        else:
+            fill, stroke = "#0082D1", "#1d5f8f"
+        tip = _html.escape(f'{p["title"]} — relevance {p["x"]:.2f}, novelty {p["y"]:.2f}, '
+                           f'{p["stories"]} stories')
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{rr:.1f}" fill="{fill}" '
+                     f'fill-opacity="0.75" stroke="{stroke}" stroke-width="1"><title>{tip}</title></circle>')
+        if id(p) in label_titles and p["title"]:
+            lbl = _html.escape(p["title"][:26])
+            parts.append(f'<text x="{cx+rr+3:.1f}" y="{cy+3:.1f}" fill="#233E66" '
+                         f'font-size="9.5">{lbl}</text>')
+
+    parts.append('</svg>')
+    svg = "\n".join(parts)
+
+    return f"""  <h2>Where do the clusters sit? <span class="review-flag">novelty × FINRA relevance</span></h2>
+  <p>Each dot is a discovered theme. <b>Novelty</b> (vertical) is how far it sits from every risk
+  already on our list; <b>FINRA relevance</b> (horizontal) is how close it sits to FINRA's
+  regulatory domain — securities, brokers, markets, investors, fraud, oversight. Dot size reflects
+  the number of distinct stories. The <b style="color:#5a7d12">shaded top-right</b> is the sweet
+  spot: themes that are both new <i>and</i> on-domain — the strongest emerging-risk candidates.
+  Dots on the far left are novel but off-topic (sports, entertainment), which is why they're set
+  aside below. Hover any dot for its details.</p>
+  <div class="panel plot-panel">{svg}</div>
+"""
 
 
 def _render_candidates():
@@ -379,8 +531,9 @@ def _render_candidates():
   <p>The latest discovery run clustered into the themes below and split them into two tiers by
   automated judgment. <b>Meaningful candidates</b> are risk-shaped themes worth a look;
   <b>broad / benign</b> clusters are prominent-but-unremarkable lifestyle, entertainment, or
-  technical-noise groupings kept for transparency. This is a shortlist for review, not a
-  finished risk list.</p>
+  technical-noise groupings kept for transparency. Within each tier, themes are ordered so the
+  most novel <i>and</i> on-domain candidates sit at the top. This is a shortlist for review,
+  not a finished risk list.</p>
 
   <div class="panel tier-meaningful">
     <h3 class="tier-h">Meaningful candidates <span class="count">{len(meaningful)}</span></h3>
@@ -405,6 +558,7 @@ def build_discovery_page(out_dir):
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     lex_chips = "".join(f'<span class="chip">{t}</span>' for t in RISK_LEXICON)
+    plot = _render_novelty_relevance_plot()
     candidates = _render_candidates()
 
     if s["exists"]:
@@ -420,6 +574,7 @@ def build_discovery_page(out_dir):
     html = html.replace("__LEX_CHIPS__", lex_chips or "<span class='muted'>(none)</span>")
     html = html.replace("__LEX_COUNT__", str(len(RISK_LEXICON)))
     html = html.replace("__CORPUS__", corpus)
+    html = html.replace("__PLOT__", plot)
     html = html.replace("__CANDIDATES__", candidates)
     html = html.replace("__GENERATED__", generated)
 
@@ -733,6 +888,11 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
   .cand-desc { color: var(--text); font-size: 13.5px; margin: 3px 0 4px; max-width: 72ch; }
   .cand-near { color: var(--muted); font-size: 12.5px; }
   .cand-near b { color: var(--gray); }
+  /* novelty x relevance scatter */
+  .plot-panel { padding: 12px 14px; }
+  .nrplot { width: 100%; height: auto; display: block; }
+  .nrplot circle { transition: fill-opacity .12s; }
+  .nrplot circle:hover { fill-opacity: 1; }
   footer { max-width: 820px; margin: 0 auto; padding: 20px 24px 40px;
     color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
 </style>
@@ -793,6 +953,8 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
   <p class="note" style="margin-top:20px">Discovery is intentionally a wide, lower-precision net:
   it surfaces a ranked shortlist for human review, not a finished answer. Precision improves as
   the corpus accumulates across more days.</p>
+
+__PLOT__
 
 __CANDIDATES__
 

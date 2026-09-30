@@ -43,6 +43,36 @@ RISK_SOURCES = [
 NEW_WINDOW_MONTHS = 3
 CENTROID_SAMPLE = 40
 
+# FINRA-domain anchor: phrases describing FINRA's actual remit (securities
+# regulation, brokers, markets, investors, fraud, oversight). A cluster's
+# FINRA_RELEVANCE is its cosine similarity to the mean of these — high means the
+# theme sits inside FINRA's world, regardless of whether it's novel. Used to
+# separate genuinely on-domain emerging risks from novel-but-off-topic noise
+# (e.g. sports/astrology, which score high novelty but low relevance).
+FINRA_ANCHOR_PHRASES = [
+    "securities regulation", "broker-dealer oversight", "investor protection",
+    "market integrity", "financial fraud", "securities fraud",
+    "market manipulation", "insider trading", "capital markets",
+    "brokerage firm compliance", "financial regulation enforcement",
+    "stock market volatility", "investment adviser misconduct",
+    "anti-money laundering", "trading surveillance",
+]
+
+
+def load_finra_anchor(model):
+    """Return a single unit vector representing FINRA's regulatory domain,
+    or None if it can't be built."""
+    from embedding_cache import encode_cached
+    try:
+        vecs = encode_cached(model, FINRA_ANCHOR_PHRASES, model_name=EMBEDDING_MODEL,
+                             verbose=False)
+    except Exception:
+        return None
+    if vecs is None or len(vecs) == 0:
+        return None
+    anchor = vecs.mean(axis=0)
+    return anchor / (np.linalg.norm(anchor) + 1e-9)
+
 
 def load_all_risk_vectors(model):
     """Embed every risk's search terms from both taxonomies.
@@ -140,6 +170,12 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
         sys.exit(1)
     print(f"Scoring novelty against {len(risk_meta)} risks from both taxonomies.")
 
+    finra_anchor = load_finra_anchor(model)
+    if finra_anchor is None:
+        print("NOTE: FINRA anchor unavailable; FINRA_RELEVANCE will be 0.")
+    else:
+        print(f"Scoring FINRA-relevance against a {len(FINRA_ANCHOR_PHRASES)}-phrase domain anchor.")
+
     # Dates for recency.
     df["_date"] = pd.to_datetime(df.get("PUBLISHED_DATE"), errors="coerce")
     df["month"] = df["_date"].dt.to_period("M").astype(str)
@@ -167,6 +203,13 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
         novelty = round(1.0 - nearest_sim, 4)
         ns, rid, rlabel = risk_meta[nearest_i]
 
+        # FINRA-relevance: closeness to the regulatory-domain anchor. Clamp the
+        # small-negative cosines that can occur to 0 so the axis reads 0..1.
+        if finra_anchor is not None:
+            finra_relevance = round(max(0.0, float(centroid @ finra_anchor)), 4)
+        else:
+            finra_relevance = 0.0
+
         distinct = int(g["DUP_GROUP"].nunique())
         avg_quality = round(float(g["QUALITY_SCORE"].mean()), 3)
         months_present = sorted(g["month"].dropna().unique())
@@ -186,6 +229,7 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
             "FIRST_SEEN": first_seen,
             "IS_NEW": is_new,
             "NOVELTY": novelty,
+            "FINRA_RELEVANCE": finra_relevance,
             "NEAREST_RISK": f"{ns}:{rid}",
             "NEAREST_RISK_LABEL": rlabel,
             "NEAREST_RISK_SIM": round(nearest_sim, 4),
@@ -206,10 +250,10 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
     print("\nTop candidate UNKNOWN risks (far from every existing risk):")
     for _, r in ranked.head(15).iterrows():
         nf = " [NEW]" if r["IS_NEW"] else ""
-        print(f"  novelty {r['NOVELTY']:.2f} score {r['DISCOVERY_SCORE']:.2f}{nf}  "
-              f"{str(r['TOPIC_TITLE'])[:46]}  "
-              f"(nearest: {r['NEAREST_RISK']} {str(r['NEAREST_RISK_LABEL'])[:22]} "
-              f"@ {r['NEAREST_RISK_SIM']:.2f})")
+        print(f"  novelty {r['NOVELTY']:.2f} finra {r['FINRA_RELEVANCE']:.2f} "
+              f"score {r['DISCOVERY_SCORE']:.2f}{nf}  "
+              f"{str(r['TOPIC_TITLE'])[:42]}  "
+              f"(nearest: {r['NEAREST_RISK']} @ {r['NEAREST_RISK_SIM']:.2f})")
 
 
 def parse_args():

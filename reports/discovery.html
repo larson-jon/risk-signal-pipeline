@@ -61,6 +61,11 @@
   .cand-desc { color: var(--text); font-size: 13.5px; margin: 3px 0 4px; max-width: 72ch; }
   .cand-near { color: var(--muted); font-size: 12.5px; }
   .cand-near b { color: var(--gray); }
+  /* novelty x relevance scatter */
+  .plot-panel { padding: 12px 14px; }
+  .nrplot { width: 100%; height: auto; display: block; }
+  .nrplot circle { transition: fill-opacity .12s; }
+  .nrplot circle:hover { fill-opacity: 1; }
   footer { max-width: 820px; margin: 0 auto; padding: 20px 24px 40px;
     color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
 </style>
@@ -85,7 +90,7 @@
 
   <div class="panel">
     <h2>What we're collecting</h2>
-    <div class="statline"><b>2,579</b> risk-lexicon articles collected so far · 238 distinct sources · latest 2026-09-28</div>
+    <div class="statline"><b>3,042</b> risk-lexicon articles collected so far · 245 distinct sources · latest 2026-09-29</div>
     <p class="note">Because the news plan serves only the last ~48 hours per request, the corpus
     accumulates forward over time — each scheduled run adds new, de-duplicated stories rather
     than reaching back into history.</p>
@@ -122,9 +127,399 @@
   it surfaces a ranked shortlist for human review, not a finished answer. Precision improves as
   the corpus accumulates across more days.</p>
 
-<div class="panel"><p class="note">No scored discovery clusters yet. Run <code>python discover_score.py</code> once the discovery corpus has accumulated to generate a candidate list here.</p></div>
+  <h2>Where do the clusters sit? <span class="review-flag">novelty × FINRA relevance</span></h2>
+  <p>Each dot is a discovered theme. <b>Novelty</b> (vertical) is how far it sits from every risk
+  already on our list; <b>FINRA relevance</b> (horizontal) is how close it sits to FINRA's
+  regulatory domain — securities, brokers, markets, investors, fraud, oversight. Dot size reflects
+  the number of distinct stories. The <b style="color:#5a7d12">shaded top-right</b> is the sweet
+  spot: themes that are both new <i>and</i> on-domain — the strongest emerging-risk candidates.
+  Dots on the far left are novel but off-topic (sports, entertainment), which is why they're set
+  aside below. Hover any dot for its details.</p>
+  <div class="panel plot-panel"><svg viewBox="0 0 720 470" class="nrplot" role="img" aria-label="Novelty versus FINRA-relevance scatter plot of discovery clusters">
+<rect x="379.0" y="24" width="317.0" height="196.0" fill="#9EC405" opacity="0.10"/>
+<rect x="62" y="24" width="634" height="392" fill="#ffffff" stroke="#e2e6ec"/>
+<line x1="379.0" y1="24" x2="379.0" y2="416" stroke="#e2e6ec" stroke-dasharray="4 4"/>
+<line x1="62" y1="220.0" x2="696" y2="220.0" stroke="#e2e6ec" stroke-dasharray="4 4"/>
+<text x="690" y="40" text-anchor="end" fill="#5a7d12" font-size="11" font-weight="700">Novel &amp; on-domain</text>
+<text x="68" y="40" fill="#9aa2ad" font-size="11">Novel, off-topic</text>
+<text x="690" y="408" text-anchor="end" fill="#9aa2ad" font-size="11">On-domain, known</text>
+<text x="379" y="456" text-anchor="middle" fill="#233E66" font-size="12" font-weight="700">FINRA relevance  →</text>
+<text x="16" y="220" text-anchor="middle" fill="#233E66" font-size="12" font-weight="700" transform="rotate(-90 16 220)">Novelty (distance from known risks)  →</text>
+<text x="54" y="419.0" text-anchor="end" fill="#6b7280" font-size="9">0.0</text>
+<text x="54" y="223.0" text-anchor="end" fill="#6b7280" font-size="9">0.5</text>
+<text x="54" y="27.0" text-anchor="end" fill="#6b7280" font-size="9">1.0</text>
+<text x="62.0" y="432" text-anchor="middle" fill="#6b7280" font-size="9">0.00</text>
+<text x="379.0" y="432" text-anchor="middle" fill="#6b7280" font-size="9">0.30</text>
+<text x="696.0" y="432" text-anchor="middle" fill="#6b7280" font-size="9">0.60</text>
+<circle cx="111.5" cy="78.1" r="11.9" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Nfl, Game &amp; Football — relevance 0.05, novelty 0.86, 157 stories</title></circle>
+<circle cx="199.9" cy="115.3" r="11.5" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Best, Film &amp; Movies — relevance 0.13, novelty 0.77, 142 stories</title></circle>
+<circle cx="136.7" cy="102.8" r="8.2" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Load Browser, Javascript Proceed &amp; Using Different — relevance 0.07, novelty 0.80, 45 stories</title></circle>
+<circle cx="282.5" cy="128.5" r="9.3" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Real Madrid, World Cup &amp; Team — relevance 0.21, novelty 0.73, 72 stories</title></circle>
+<circle cx="144.5" cy="90.8" r="7.6" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Red Sox, Season &amp; Baseball — relevance 0.08, novelty 0.83, 33 stories</title></circle>
+<circle cx="138.4" cy="138.8" r="11.0" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Health, Study &amp; Research — relevance 0.07, novelty 0.71, 125 stories</title></circle>
+<circle cx="62.0" cy="67.8" r="7.1" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Wnba, Ja Wilson &amp; Aces — relevance 0.00, novelty 0.89, 24 stories</title></circle>
+<circle cx="132.8" cy="155.2" r="8.7" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Climate, Hurricane &amp; Tropical Storm — relevance 0.07, novelty 0.67, 57 stories</title></circle>
+<circle cx="301.1" cy="155.3" r="8.6" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>White House, Trump &amp; Outlets — relevance 0.23, novelty 0.67, 54 stories</title></circle>
+<circle cx="175.8" cy="115.8" r="7.6" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Nba, Lebron James &amp; Season — relevance 0.11, novelty 0.77, 33 stories</title></circle>
+<circle cx="158.4" cy="109.2" r="6.9" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Schools, Education &amp; Systemic Racism — relevance 0.09, novelty 0.78, 22 stories</title></circle>
+<circle cx="239.4" cy="146.8" r="7.7" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Attorney, Shot &amp; Ice — relevance 0.17, novelty 0.69, 34 stories</title></circle>
+<circle cx="62.0" cy="88.2" r="6.6" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Taylor Swift, 2026 Mtv &amp; Music — relevance 0.00, novelty 0.84, 17 stories</title></circle>
+<circle cx="62.2" cy="101.2" r="6.7" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Sea Turtle, Aquarium Pacific &amp; Turtle Nests — relevance 0.00, novelty 0.80, 19 stories</title></circle>
+<circle cx="186.1" cy="130.3" r="7.1" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Meta, Muse &amp; Iphone — relevance 0.12, novelty 0.73, 25 stories</title></circle>
+<circle cx="339.2" cy="138.0" r="7.5" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Manchester City, Premier League &amp; Guilty — relevance 0.26, novelty 0.71, 31 stories</title></circle>
+<text x="349.7" y="141.0" fill="#233E66" font-size="9.5">Manchester City, Premier L</text>
+<circle cx="288.1" cy="138.9" r="7.2" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Beef, Coffee &amp; Food — relevance 0.21, novelty 0.71, 26 stories</title></circle>
+<circle cx="174.7" cy="118.6" r="6.6" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Fashion, October &amp; Cleaning — relevance 0.11, novelty 0.76, 17 stories</title></circle>
+<circle cx="225.6" cy="211.5" r="8.4" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>China, Xi Jinping &amp; Trump — relevance 0.15, novelty 0.52, 48 stories</title></circle>
+<circle cx="265.3" cy="210.0" r="8.2" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Supreme Court, Election &amp; Trump — relevance 0.19, novelty 0.53, 44 stories</title></circle>
+<circle cx="354.3" cy="231.1" r="9.2" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Tax, Snap &amp; Housing — relevance 0.28, novelty 0.47, 69 stories</title></circle>
+<circle cx="219.1" cy="174.3" r="6.9" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Flock Cameras, License Plate &amp; Surveillance — relevance 0.15, novelty 0.62, 22 stories</title></circle>
+<circle cx="228.0" cy="157.0" r="6.7" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Abortion, Overton &amp; Fda — relevance 0.16, novelty 0.66, 19 stories</title></circle>
+<circle cx="276.7" cy="116.1" r="6.1" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Social Media, Children &amp; Parents — relevance 0.20, novelty 0.77, 11 stories</title></circle>
+<circle cx="228.0" cy="141.0" r="6.3" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Detention, Ice &amp; Wasted — relevance 0.16, novelty 0.70, 13 stories</title></circle>
+<circle cx="89.0" cy="229.3" r="8.0" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Iran, President &amp; Pezeshkian — relevance 0.03, novelty 0.48, 41 stories</title></circle>
+<circle cx="143.6" cy="186.8" r="6.7" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Benjamin Netanyahu, Israeli &amp; Gaza — relevance 0.08, novelty 0.58, 18 stories</title></circle>
+<circle cx="345.4" cy="186.2" r="6.7" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Data Centers, Energy &amp; EU — relevance 0.27, novelty 0.59, 19 stories</title></circle>
+<text x="355.1" y="189.2" fill="#233E66" font-size="9.5">Data Centers, Energy &amp; EU</text>
+<circle cx="490.5" cy="179.8" r="6.4" fill="#9EC405" fill-opacity="0.75" stroke="#5a7d12" stroke-width="1"><title>Paramount, Warner Bros &amp; Merger — relevance 0.40, novelty 0.60, 15 stories</title></circle>
+<text x="500.0" y="182.8" fill="#233E66" font-size="9.5">Paramount, Warner Bros &amp; M</text>
+<circle cx="179.9" cy="222.3" r="7.3" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Ukraine, NATO &amp; Russian — relevance 0.11, novelty 0.49, 27 stories</title></circle>
+<circle cx="613.3" cy="253.6" r="9.1" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Yields, Market &amp; Treasury — relevance 0.52, novelty 0.41, 66 stories</title></circle>
+<text x="625.4" y="256.6" fill="#233E66" font-size="9.5">Yields, Market &amp; Treasury</text>
+<circle cx="166.5" cy="162.4" r="6.1" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Pope Leo, Leo Xiv &amp; France — relevance 0.10, novelty 0.65, 11 stories</title></circle>
+<circle cx="375.1" cy="292.5" r="12.0" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Openai, Artificial Intelligence &amp; Anthropic — relevance 0.30, novelty 0.32, 162 stories</title></circle>
+<circle cx="358.0" cy="141.2" r="6.1" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Spacex, Starship &amp; Orbit — relevance 0.28, novelty 0.70, 11 stories</title></circle>
+<text x="367.1" y="144.2" fill="#233E66" font-size="9.5">Spacex, Starship &amp; Orbit</text>
+<circle cx="519.9" cy="209.8" r="6.5" fill="#9EC405" fill-opacity="0.75" stroke="#5a7d12" stroke-width="1"><title>Kalshi, Draftkings &amp; Betting — relevance 0.43, novelty 0.53, 16 stories</title></circle>
+<text x="529.4" y="212.8" fill="#233E66" font-size="9.5">Kalshi, Draftkings &amp; Betti</text>
+<circle cx="325.1" cy="263.0" r="8.6" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Diesel, Prices &amp; Oil — relevance 0.25, novelty 0.39, 53 stories</title></circle>
+<circle cx="179.6" cy="197.0" r="6.1" fill="#c7cdd6" fill-opacity="0.75" stroke="#9aa2ad" stroke-width="1"><title>Airports, Flights &amp; Travel — relevance 0.11, novelty 0.56, 11 stories</title></circle>
+<circle cx="321.1" cy="201.7" r="6.1" fill="#0082D1" fill-opacity="0.75" stroke="#1d5f8f" stroke-width="1"><title>Devastating Sanctions, Netherlands &amp; Court — relevance 0.24, novelty 0.55, 11 stories</title></circle>
+</svg></div>
+
+
+  <h2>Candidate emerging risks <span class="review-flag">analyst review required</span></h2>
+  <p>The latest discovery run clustered into the themes below and split them into two tiers by
+  automated judgment. <b>Meaningful candidates</b> are risk-shaped themes worth a look;
+  <b>broad / benign</b> clusters are prominent-but-unremarkable lifestyle, entertainment, or
+  technical-noise groupings kept for transparency. Within each tier, themes are ordered so the
+  most novel <i>and</i> on-domain candidates sit at the top. This is a shortlist for review,
+  not a finished risk list.</p>
+
+  <div class="panel tier-meaningful">
+    <h3 class="tier-h">Meaningful candidates <span class="count">29</span></h3>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Paramount, Warner Bros &amp; Merger</span>
+          <span class="cand-metrics">15 stories · novelty 60% · FINRA relevance 40% (high)</span>
+        </div>
+        <div class="cand-desc">Coverage of paramount, warner bros, merger, polymarket and bros discovery, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>market manipulation</b> (40% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Kalshi, Draftkings &amp; Betting</span>
+          <span class="cand-metrics">16 stories · novelty 53% · FINRA relevance 43% (high)</span>
+        </div>
+        <div class="cand-desc">Coverage of kalshi, draftkings, betting, gambling and gamblers, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>market manipulation</b> (47% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Yields, Market &amp; Treasury</span>
+          <span class="cand-metrics">66 stories · novelty 41% · FINRA relevance 52% (high)</span>
+        </div>
+        <div class="cand-desc">Coverage of yields, market, treasury, bond and higher, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>financial sector collapse US</b> (59% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Spacex, Starship &amp; Orbit</span>
+          <span class="cand-metrics">11 stories · novelty 70% · FINRA relevance 28% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of spacex, starship, orbit, spcx and ipo, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>market manipulation</b> (30% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Manchester City, Premier League &amp; Guilty</span>
+          <span class="cand-metrics">31 stories · novelty 71% · FINRA relevance 26% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of manchester city, premier league, guilty and charges, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>investor loss broker fraud</b> (29% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Data Centers, Energy &amp; EU</span>
+          <span class="cand-metrics">19 stories · novelty 59% · FINRA relevance 27% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of data centers, energy, eu, pn and water, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>data breach finance</b> (41% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Social Media, Children &amp; Parents</span>
+          <span class="cand-metrics">11 stories · novelty 77% · FINRA relevance 20% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of social media, children, parents, kitten and maga, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>Restoring Accountability in Market Supervision (RAMS) Act</b> (23% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Beef, Coffee &amp; Food</span>
+          <span class="cand-metrics">26 stories · novelty 71% · FINRA relevance 21% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of beef, coffee, food, meat and pork, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>financial sector collapse US</b> (29% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">White House, Trump &amp; Outlets</span>
+          <span class="cand-metrics">54 stories · novelty 67% · FINRA relevance 23% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of white house, trump, outlets, ban and cnn, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>Trump federal policies</b> (33% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Devastating Sanctions, Netherlands &amp; Court</span>
+          <span class="cand-metrics">11 stories · novelty 55% · FINRA relevance 24% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of devastating sanctions, netherlands, court, potentially devastating and tribunal, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>Taiwan Strait crisis</b> (45% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Tax, Snap &amp; Housing</span>
+          <span class="cand-metrics">69 stories · novelty 47% · FINRA relevance 28% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of tax, snap, housing, state and home, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>Trump federal policies</b> (53% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Attorney, Shot &amp; Ice</span>
+          <span class="cand-metrics">34 stories · novelty 69% · FINRA relevance 17% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of attorney, shot, ice, man and case, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>FINRA constitutionality challenge</b> (31% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Detention, Ice &amp; Wasted</span>
+          <span class="cand-metrics">13 stories · novelty 70% · FINRA relevance 16% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of detention, ice, wasted, millions and immigration, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>cross-market surveillance disruption</b> (30% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Abortion, Overton &amp; Fda</span>
+          <span class="cand-metrics">19 stories · novelty 66% · FINRA relevance 16% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of abortion, overton, fda, vaccines and senators, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>Trump federal policies</b> (34% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Supreme Court, Election &amp; Trump</span>
+          <span class="cand-metrics">44 stories · novelty 53% · FINRA relevance 19% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of supreme court, election, trump, voters and republican, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>Trump federal policies</b> (47% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Diesel, Prices &amp; Oil</span>
+          <span class="cand-metrics">53 stories · novelty 39% · FINRA relevance 25% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of diesel, prices, oil, iran and trump, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>Iran oil infrastructure</b> (61% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Openai, Artificial Intelligence &amp; Anthropic</span>
+          <span class="cand-metrics">162 stories · novelty 32% · FINRA relevance 30% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of openai, artificial intelligence, anthropic and nvidia, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>GenAI&quot; risks securities</b> (68% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Flock Cameras, License Plate &amp; Surveillance</span>
+          <span class="cand-metrics">22 stories · novelty 62% · FINRA relevance 15% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of flock, cameras, license plate and surveillance, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>cross-market surveillance disruption</b> (38% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">China, Xi Jinping &amp; Trump</span>
+          <span class="cand-metrics">48 stories · novelty 52% · FINRA relevance 15% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of china, xi jinping, trump and chinese, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>US China tech rivalry</b> (48% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Schools, Education &amp; Systemic Racism</span>
+          <span class="cand-metrics">22 stories · novelty 78% · FINRA relevance 9% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of schools, education, systemic racism, durham and portrait, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>advisor shortage in US</b> (22% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Airports, Flights &amp; Travel</span>
+          <span class="cand-metrics">11 stories · novelty 56% · FINRA relevance 11% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of airports, flights, travel, faa and terminal, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>business interruption broker-dealer</b> (44% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Ukraine, NATO &amp; Russian</span>
+          <span class="cand-metrics">27 stories · novelty 49% · FINRA relevance 11% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of ukraine, nato, russian, putin and moscow, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>US China tech rivalry</b> (51% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Health, Study &amp; Research</span>
+          <span class="cand-metrics">125 stories · novelty 71% · FINRA relevance 7% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of health, study, research, cancer and disease, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>GenAI&quot; risks securities</b> (29% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Benjamin Netanyahu, Israeli &amp; Gaza</span>
+          <span class="cand-metrics">18 stories · novelty 58% · FINRA relevance 8% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of netanyahu, israeli, gaza, genocide and abbas, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>US China tech rivalry</b> (42% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Climate, Hurricane &amp; Tropical Storm</span>
+          <span class="cand-metrics">57 stories · novelty 67% · FINRA relevance 7% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of climate, hurricane, storm, tropical and atlantic, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>Taiwan Strait crisis</b> (33% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Iran, President &amp; Pezeshkian</span>
+          <span class="cand-metrics">41 stories · novelty 48% · FINRA relevance 3% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of iran, president, pezeshkian, united and assembly, with mostly negative sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>Iran oil infrastructure</b> (52% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Sea Turtle, Aquarium Pacific &amp; Turtle Nests</span>
+          <span class="cand-metrics">19 stories · novelty 80% · FINRA relevance 0% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of sea turtle, aquarium pacific, turtle nests, alaska and eggs, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>cross-market surveillance disruption</b> (20% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Wnba, Ja Wilson &amp; Aces</span>
+          <span class="cand-metrics">24 stories · novelty 89% · FINRA relevance 0% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of wnba, ja wilson, aces, caitlin and clark, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>advisor shortage in US</b> (11% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Taylor Swift, 2026 Mtv &amp; Music</span>
+          <span class="cand-metrics">17 stories · novelty 84% · FINRA relevance 0% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of taylor swift, mtv, music, artist and vmas, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>crypto regulatory changes Trump</b> (16% similar)</div>
+      </div>
+  </div>
+
+  <div class="panel tier-benign">
+    <h3 class="tier-h muted-h">Broad / benign clusters <span class="count">9</span></h3>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Real Madrid, World Cup &amp; Team</span>
+          <span class="cand-metrics">72 stories · novelty 73% · FINRA relevance 21% (moderate)</span>
+        </div>
+        <div class="cand-desc">Coverage of real madrid, cup, team, league and season, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>investor loss broker fraud</b> (27% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Best, Film &amp; Movies</span>
+          <span class="cand-metrics">142 stories · novelty 77% · FINRA relevance 13% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of best, film, movies, series and tv, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>fintech AI specialist demand</b> (23% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Meta, Muse &amp; Iphone</span>
+          <span class="cand-metrics">25 stories · novelty 73% · FINRA relevance 12% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of meta, muse, iphone, 27 and glasses, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>cross-market surveillance disruption</b> (27% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Nba, Lebron James &amp; Season</span>
+          <span class="cand-metrics">33 stories · novelty 77% · FINRA relevance 11% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of nba, lebron james, season and lakers, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>advisor shortage in US</b> (23% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Fashion, October &amp; Cleaning</span>
+          <span class="cand-metrics">17 stories · novelty 76% · FINRA relevance 11% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of fashion, october, cleaning, leo and dog, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>FINRA rule modernization</b> (24% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Red Sox, Season &amp; Baseball</span>
+          <span class="cand-metrics">33 stories · novelty 83% · FINRA relevance 8% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of red sox, season, baseball, mariners and game, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>financial sector collapse US</b> (17% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Pope Leo, Leo Xiv &amp; France</span>
+          <span class="cand-metrics">11 stories · novelty 65% · FINRA relevance 10% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of pope leo, leo xiv, france and machines, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>GenAI&quot; risks securities</b> (35% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Load Browser, Javascript Proceed &amp; Using Different</span>
+          <span class="cand-metrics">45 stories · novelty 80% · FINRA relevance 7% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of load browser, javascript proceed, using different, site couldn and proceed required, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>financial deregulation Trump</b> (20% similar)</div>
+      </div>
+      <div class="cand">
+        <div class="cand-head">
+          <span class="cand-title">Nfl, Game &amp; Football</span>
+          <span class="cand-metrics">157 stories · novelty 86% · FINRA relevance 5% (low)</span>
+        </div>
+        <div class="cand-desc">Coverage of nfl, game, football, season and quarterback, with mostly positive sentiment.</div>
+        <div class="cand-near">Nearest known risk: <b>FINRA constitutionality challenge</b> (14% similar)</div>
+      </div>
+  </div>
+
 
 </main>
-<footer>Generated 2026-09-30 09:52 · self-contained HTML, no external dependencies.</footer>
+<footer>Generated 2026-09-30 11:11 · self-contained HTML, no external dependencies.</footer>
 </body>
 </html>
