@@ -128,9 +128,35 @@ def _faq_card(faq_file):
     </a>"""
 
 
-def build_html(reports, discovery_file=None, readme_file=None, faq_file=None):
+def _status_card(status_file, kind):
+    """A card linking to a risk status grid (ERM decision surface)."""
+    label = "Enterprise" if kind == "enterprise" else "Emerging"
+    return f"""    <a class="card status" href="{status_file}">
+      <div class="card-title">{label} Risk Status — at-a-glance grid</div>
+      <div class="card-desc">Each {label.lower()} risk classified Escalating / Elevated / Stable /
+      Cooling from its news signal, sorted so the urgent ones lead. Built for ERM triage.</div>
+      <div class="card-meta">Status by risk · for review</div>
+      <div class="card-go">Open status grid →</div>
+    </a>"""
+
+
+def _find_status_grids(report_dir):
+    """Return existing risk-status grid files as (filename, kind) pairs."""
+    found = []
+    for kind in ("enterprise", "emerging"):
+        f = Path(report_dir) / f"risk_status_{kind}.html"
+        if f.exists():
+            found.append((f.name, kind))
+    return found
+
+
+def build_html(reports, discovery_file=None, readme_file=None, faq_file=None,
+               status_grids=None):
     cards = "\n".join(_card(r) for r in reports) or \
         '<div class="empty">No reports found. Run build_report.py first.</div>'
+    # Status grids lead — they're the ERM decision surface.
+    for fname, kind in (status_grids or []):
+        cards = _status_card(fname, kind) + "\n" + cards
     if discovery_file:
         cards += "\n" + _discovery_card(discovery_file)
     if faq_file:
@@ -293,6 +319,36 @@ _BENIGN_TERMS = [
 ]
 
 
+def _load_topic_articles(csv_path="output/discovery_topic_articles.csv"):
+    """Load the per-topic article list written by discover_score.py.
+
+    Returns {topic_id: [ {title, link, source, sentiment, date}, ... ]}, or an
+    empty dict if the file is absent (older runs, or CI before scoring).
+    """
+    path = Path(csv_path)
+    if not path.exists():
+        return {}
+    try:
+        import pandas as pd
+        df = pd.read_csv(path)
+    except Exception:
+        return {}
+    by_topic = {}
+    for _, r in df.iterrows():
+        try:
+            tid = int(r.get("TOPIC_ID"))
+        except (TypeError, ValueError):
+            continue
+        by_topic.setdefault(tid, []).append({
+            "title": str(r.get("TITLE", "") or "").strip(),
+            "link": str(r.get("LINK", "") or "").strip(),
+            "source": str(r.get("SOURCE", "") or "").strip(),
+            "sentiment": str(r.get("SENTIMENT", "") or "").strip(),
+            "date": str(r.get("PUBLISHED_DATE", "") or "").strip(),
+        })
+    return by_topic
+
+
 def _classify_discovery_topics(csv_path="output/discovery_ranked.csv"):
     """Read discovery_ranked.csv and split topics into two tiers:
     'meaningful' candidate risks vs 'broad/benign' clusters.
@@ -316,11 +372,20 @@ def _classify_discovery_topics(csv_path="output/discovery_ranked.csv"):
         blob = f"{row.get('TOPIC_TITLE', '')} {row.get('TOPIC_DESCRIPTION', '')}".lower()
         return any(term in blob for term in _BENIGN_TERMS)
 
+    articles_by_topic = _load_topic_articles()
+
     meaningful, benign = [], []
     for _, row in df.iterrows():
         novelty = float(row.get("NOVELTY", 0) or 0)
         finra = float(row.get("FINRA_RELEVANCE", 0) or 0)
+        tid = row.get("TOPIC_ID")
+        try:
+            tid = int(tid)
+        except (TypeError, ValueError):
+            tid = None
         item = {
+            "topic_id": tid,
+            "articles": articles_by_topic.get(tid, []),
             "title": str(row.get("TOPIC_TITLE", "")).strip(),
             "desc": str(row.get("TOPIC_DESCRIPTION", "")).strip(),
             "stories": int(row.get("DISTINCT_STORIES", 0) or 0),
@@ -362,6 +427,30 @@ def _finra_band(rel):
     return "low"
 
 
+def _article_list_html(articles):
+    """Collapsible list of a topic's articles, titles linking to their source."""
+    import html as _html
+    if not articles:
+        return ('<div class="cand-articles"><p class="noart">Article links aren\'t '
+                'available for this topic yet (re-run the discovery scoring to populate them).</p></div>')
+    items = []
+    for a in articles:
+        title = _html.escape(a.get("title") or "(untitled)")
+        link = a.get("link") or ""
+        src = _html.escape(a.get("source") or "")
+        date = _html.escape(a.get("date") or "")
+        meta = " · ".join(x for x in (src, date) if x)
+        meta_html = f'<span class="art-meta">{meta}</span>' if meta else ""
+        if link.startswith("http"):
+            safe_link = _html.escape(link, quote=True)
+            title_html = (f'<a href="{safe_link}" target="_blank" rel="noopener noreferrer">'
+                          f'{title}</a>')
+        else:
+            title_html = title
+        items.append(f'<li>{title_html}{meta_html}</li>')
+    return f'<div class="cand-articles"><ul>{"".join(items)}</ul></div>'
+
+
 def _candidate_row(item):
     import html as _html
     title = _html.escape(item["title"])
@@ -371,13 +460,19 @@ def _candidate_row(item):
     band = _finra_band(item["finra"])
     near = _html.escape(item["near_label"]) or "—"
     near_pct = f"{item['near_sim'] * 100:.0f}%"
-    return f"""      <div class="cand">
-        <div class="cand-head">
-          <span class="cand-title">{title}</span>
-          <span class="cand-metrics">{item['stories']:,} stories · novelty {nov_pct} · FINRA relevance {fin_pct} ({band})</span>
+    articles = item.get("articles") or []
+    n_art = len(articles)
+    caret = '<span class="caret" aria-hidden="true">▸</span>'
+    toggle_hint = (f'<span class="cand-toggle">{n_art} article{"s" if n_art != 1 else ""} ▾</span>'
+                   if n_art else '')
+    return f"""      <div class="cand" data-articles="{n_art}">
+        <div class="cand-head" role="button" tabindex="0" aria-expanded="false">
+          <span class="cand-title">{caret}{title}</span>
+          <span class="cand-metrics">{item['stories']:,} stories · novelty {nov_pct} · FINRA relevance {fin_pct} ({band}){(" · " + toggle_hint) if toggle_hint else ""}</span>
         </div>
         <div class="cand-desc">{desc}</div>
         <div class="cand-near">Nearest known risk: <b>{near}</b> ({near_pct} similar)</div>
+        {_article_list_html(articles)}
       </div>"""
 
 
@@ -720,10 +815,12 @@ def run(report_dir, out_path):
     disco = build_discovery_page(report_dir)
     faq = build_faq_page(report_dir)
     readme = build_readme_page(report_dir)
+    status_grids = _find_status_grids(report_dir)
     html = build_html(reports,
                       discovery_file=disco.name if disco else None,
                       readme_file=readme.name if readme else None,
-                      faq_file=faq.name if faq else None)
+                      faq_file=faq.name if faq else None,
+                      status_grids=status_grids)
     out = Path(out_path)
     out.parent.mkdir(exist_ok=True)
     out.write_text(html, encoding="utf-8")
@@ -787,6 +884,8 @@ _TEMPLATE = r"""<!DOCTYPE html>
   .card.discovery:hover { border-color: var(--green); border-left-color: var(--green); }
   .card.faq { border-left: 4px solid var(--accent); }
   .card.faq:hover { border-color: var(--accent); border-left-color: var(--accent); }
+  .card.status { border-left: 4px solid var(--red); }
+  .card.status:hover { border-color: var(--red); border-left-color: var(--red); }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
   .how { background: #eef3fa; border: 1px solid var(--border); border-left: 4px solid var(--accent);
     border-radius: 8px; padding: 16px 20px; margin-top: 24px; color: #2b3a52; font-size: 13.5px; max-width: 78ch; }
@@ -888,6 +987,22 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
   .cand-desc { color: var(--text); font-size: 13.5px; margin: 3px 0 4px; max-width: 72ch; }
   .cand-near { color: var(--muted); font-size: 12.5px; }
   .cand-near b { color: var(--gray); }
+  /* expandable article drill-down */
+  .cand[data-articles="0"] .cand-head { cursor: default; }
+  .cand-head[role="button"] { cursor: pointer; }
+  .cand-head .caret { display: inline-block; margin-right: 6px; color: var(--accent);
+    font-size: 11px; transition: transform .12s; }
+  .cand.open .cand-head .caret { transform: rotate(90deg); }
+  .cand-toggle { color: var(--accent); font-weight: 700; }
+  .cand-articles { display: none; margin: 8px 0 2px; padding: 10px 14px;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; }
+  .cand.open .cand-articles { display: block; }
+  .cand-articles ul { margin: 0; padding-left: 18px; }
+  .cand-articles li { margin: 4px 0; font-size: 13px; line-height: 1.4; }
+  .cand-articles a { color: var(--accent); text-decoration: none; }
+  .cand-articles a:hover { text-decoration: underline; }
+  .cand-articles .art-meta { color: var(--muted); font-size: 11.5px; margin-left: 8px; }
+  .cand-articles .noart { color: var(--muted); font-size: 12.5px; margin: 0; }
   /* novelty x relevance scatter */
   .plot-panel { padding: 12px 14px; }
   .nrplot { width: 100%; height: auto; display: block; }
@@ -960,6 +1075,27 @@ __CANDIDATES__
 
 </main>
 <footer>Generated __GENERATED__ · self-contained HTML, no external dependencies.</footer>
+<script>
+  // Expand/collapse a topic's article list on click (or Enter/Space).
+  (function () {
+    function toggle(card) {
+      if (card.getAttribute("data-articles") === "0") return;
+      var open = card.classList.toggle("open");
+      var head = card.querySelector(".cand-head");
+      if (head) head.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    document.querySelectorAll(".cand .cand-head[role=button]").forEach(function (head) {
+      var card = head.closest(".cand");
+      head.addEventListener("click", function (e) {
+        if (e.target.tagName === "A") return;  // let article links work normally
+        toggle(card);
+      });
+      head.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(card); }
+      });
+    });
+  })();
+</script>
 </body>
 </html>
 """

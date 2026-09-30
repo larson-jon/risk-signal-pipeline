@@ -92,6 +92,11 @@ RISK_LEXICON = [
 
 OUTPUT_CSV = "output/discovery_news.csv"
 
+# How much article text to store in the SUMMARY column. Full-text extraction
+# now yields multi-thousand-char bodies; keep enough for the spaCy stage to
+# find entities/keywords without bloating the CSV. (Was 500 under newspaper3k.)
+SUMMARY_CHARS = 4000
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/77.0",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
@@ -126,45 +131,36 @@ def _score_sentiment(analyzer, text):
     return round(c, 4), label
 
 
-# newspaper3k is optional: it enriches summaries via full-text parsing, but if
-# it isn't installed we fall back to the API's own title/description, which is
-# enough for clustering. (newspaper3k can be hard to build on newer Python.)
+# Full-text extraction via trafilatura (article_text.py). Replaces the
+# abandoned newspaper3k path: trafilatura installs on modern Python, extracts
+# main article body more reliably, and caches every URL to disk so re-runs are
+# free. If trafilatura is unavailable, extraction returns "" and callers fall
+# back to the API-provided description - clustering still works either way.
 try:
-    from newspaper import Article, Config as _NewspaperConfig
-    _HAVE_NEWSPAPER = True
+    from article_text import fetch_article_text, _HAVE_TRAFILATURA
+    _HAVE_FULLTEXT = _HAVE_TRAFILATURA
 except Exception:
-    _HAVE_NEWSPAPER = False
+    _HAVE_FULLTEXT = False
+
+    def fetch_article_text(url, fallback="", **_kwargs):  # type: ignore
+        return fallback
 
 
 def _make_config():
-    if not _HAVE_NEWSPAPER:
-        return None
-    cfg = _NewspaperConfig()
-    cfg.fetch_images = False
-    cfg.memoize_articles = False
-    cfg.request_timeout = 30
-    return cfg
+    """Retained for call-site compatibility. Returns a requests.Session so
+    full-text fetches within one run reuse a connection pool."""
+    return requests.Session()
 
 
-def _parse_article(url, config):
-    """Best-effort full-text parse; returns (summary, keywords).
+def _parse_article(url, session, fallback=""):
+    """Best-effort full article text via trafilatura; returns (text, keywords).
 
-    No-op (returns empty) when newspaper3k is unavailable - the caller then
-    falls back to the API-provided description.
+    Returns the extracted body when substantial, else `fallback` (the API
+    description). Keywords are left to the spaCy stage now, so "" is returned
+    for the keyword slot. Never raises.
     """
-    if not _HAVE_NEWSPAPER or config is None:
-        return "", ""
-    try:
-        article = Article(url, config=config)
-        article.download()
-        if article.download_state == 2:
-            article.parse()
-            summary = article.summary if article.summary else (article.text[:500] if article.text else "")
-            keywords = ", ".join(article.keywords) if article.keywords else ""
-            return summary, keywords
-    except Exception:
-        pass
-    return "", ""
+    text = fetch_article_text(url, fallback=fallback, session=session)
+    return text, ""
 
 
 def fetch(months, categories, country, language, prioritydomain,
@@ -205,7 +201,6 @@ def fetch(months, categories, country, language, prioritydomain,
         print("ERROR: NEWS_DATA_API_KEY not set. Set it and re-run (or use --dry-run).")
         sys.exit(1)
 
-    from newspaper import Config
     from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
     try:
         from content_quality import quality_score
@@ -213,10 +208,7 @@ def fetch(months, categories, country, language, prioritydomain,
         quality_score = None
 
     analyzer = SentimentIntensityAnalyzer()
-    config = Config()
-    config.fetch_images = False
-    config.memoize_articles = False
-    config.request_timeout = 30
+    config = _make_config()
     if VERIFY_SSL and VERIFY_SSL is not True:
         os.environ["REQUESTS_CA_BUNDLE"] = VERIFY_SSL
         os.environ["SSL_CERT_FILE"] = VERIFY_SSL
@@ -274,7 +266,8 @@ def fetch(months, categories, country, language, prioritydomain,
                     published = item.get("pubDate", "") or ""
                     source = item.get("source_id") or get_source_name(url)
 
-                    summary, keywords = _parse_article(url, config)
+                    api_desc = str(item.get("description") or item.get("content") or "")
+                    summary, keywords = _parse_article(url, config, fallback=api_desc)
                     compound, label = _score_sentiment(analyzer, f"{title} {summary}")
                     global_index += 1
                     row = {
@@ -284,7 +277,7 @@ def fetch(months, categories, country, language, prioritydomain,
                         "TITLE": title,
                         "LINK": url,
                         "PUBLISHED_DATE": published,
-                        "SUMMARY": summary[:500],
+                        "SUMMARY": summary[:SUMMARY_CHARS],
                         "KEYWORDS": keywords,
                         "SENTIMENT_COMPOUND": compound,
                         "SENTIMENT": label,
@@ -360,8 +353,10 @@ def fetch_latest(categories, country, language, prioritydomain, per_category_pag
 
     analyzer = SentimentIntensityAnalyzer()
     config = _make_config()
-    if not _HAVE_NEWSPAPER:
-        print("  note: newspaper3k not available - using API description as summary.")
+    if not _HAVE_FULLTEXT:
+        print("  note: trafilatura not available - using API description as summary.")
+    else:
+        print("  full-text extraction: trafilatura (cached per URL).")
     if VERIFY_SSL and VERIFY_SSL is not True:
         os.environ["REQUESTS_CA_BUNDLE"] = VERIFY_SSL
         os.environ["SSL_CERT_FILE"] = VERIFY_SSL
@@ -402,16 +397,14 @@ def fetch_latest(categories, country, language, prioritydomain, per_category_pag
                 title = item.get("title") or ""
                 published = item.get("pubDate", "") or ""
                 source = item.get("source_id") or get_source_name(url)
-                summary, keywords = _parse_article(url, config)
-                if not summary:
-                    # Fall back to the API-provided description/content.
-                    summary = str(item.get("description") or item.get("content") or "")
+                api_desc = str(item.get("description") or item.get("content") or "")
+                summary, keywords = _parse_article(url, config, fallback=api_desc)
                 compound, label = _score_sentiment(analyzer, f"{title} {summary}")
                 global_index += 1
                 row = {
                     "RISK_ID": -1, "SEARCH_TERM_ID": "DISCOVERY",
                     "GOOGLE_INDEX": global_index, "TITLE": title, "LINK": url,
-                    "PUBLISHED_DATE": published, "SUMMARY": summary[:500],
+                    "PUBLISHED_DATE": published, "SUMMARY": summary[:SUMMARY_CHARS],
                     "KEYWORDS": keywords, "SENTIMENT_COMPOUND": compound,
                     "SENTIMENT": label, "SOURCE": source, "CATEGORY": category,
                     "QUALITY_SCORE": 0,
@@ -460,8 +453,10 @@ def fetch_lexicon(lexicon, country, language, prioritydomain, per_query_pages,
 
     analyzer = SentimentIntensityAnalyzer()
     config = _make_config()
-    if not _HAVE_NEWSPAPER:
-        print("  note: newspaper3k not available - using API description as summary.")
+    if not _HAVE_FULLTEXT:
+        print("  note: trafilatura not available - using API description as summary.")
+    else:
+        print("  full-text extraction: trafilatura (cached per URL).")
     if VERIFY_SSL and VERIFY_SSL is not True:
         os.environ["REQUESTS_CA_BUNDLE"] = VERIFY_SSL
         os.environ["SSL_CERT_FILE"] = VERIFY_SSL
@@ -502,15 +497,14 @@ def fetch_lexicon(lexicon, country, language, prioritydomain, per_query_pages,
                 title = item.get("title") or ""
                 published = item.get("pubDate", "") or ""
                 source = item.get("source_id") or get_source_name(url)
-                summary, keywords = _parse_article(url, config)
-                if not summary:
-                    summary = str(item.get("description") or item.get("content") or "")
+                api_desc = str(item.get("description") or item.get("content") or "")
+                summary, keywords = _parse_article(url, config, fallback=api_desc)
                 compound, label = _score_sentiment(analyzer, f"{title} {summary}")
                 global_index += 1
                 row = {
                     "RISK_ID": -1, "SEARCH_TERM_ID": tag,
                     "GOOGLE_INDEX": global_index, "TITLE": title, "LINK": url,
-                    "PUBLISHED_DATE": published, "SUMMARY": summary[:500],
+                    "PUBLISHED_DATE": published, "SUMMARY": summary[:SUMMARY_CHARS],
                     "KEYWORDS": keywords, "SENTIMENT_COMPOUND": compound,
                     "SENTIMENT": label, "SOURCE": source,
                     "CATEGORY": f"lex:{phrase}", "QUALITY_SCORE": 0,

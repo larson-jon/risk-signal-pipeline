@@ -27,3 +27,7 @@ hdbscan
 # Deck generation - make_overview_slide.py builds the FINRA-branded overview
 # PowerPoint onto the template in tests/. Only needed to (re)generate the slide.
 python-pptx>=1.0.0
+
+# Full-text article extraction (article_text.py / discovery fetch). Replaces the
+# abandoned newspaper3k; installs cleanly on Python 3.13.
+trafilatura>=2.0.0

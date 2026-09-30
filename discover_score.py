@@ -42,6 +42,8 @@ RISK_SOURCES = [
 
 NEW_WINDOW_MONTHS = 3
 CENTROID_SAMPLE = 40
+# Max distinct-story articles to export per topic for the report's drill-down.
+ARTICLES_PER_TOPIC = 25
 
 # FINRA-domain anchor: phrases describing FINRA's actual remit (securities
 # regulation, brokers, markets, investors, fraud, oversight). A cluster's
@@ -185,6 +187,7 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
     from embedding_cache import encode_cached
 
     rows = []
+    article_rows = []  # per-article export so the report can list a topic's stories
     used_titles = set()
     order = (df[df["TOPIC_ID"] != -1].groupby("TOPIC_ID").size()
              .sort_values(ascending=False).index.tolist())
@@ -219,6 +222,32 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
 
         score = round(novelty * float(np.log1p(distinct)) * avg_quality * recency, 4)
 
+        # Per-article export: one row per DISTINCT story (best-quality
+        # representative of each dup group), so the report can list a topic's
+        # articles with links without showing syndicated reprints. Capped per
+        # topic to keep the embedded report JSON manageable.
+        seen_groups = set()
+        art_sorted = g.sort_values("QUALITY_SCORE", ascending=False)
+        for _, a in art_sorted.iterrows():
+            grp = a.get("DUP_GROUP")
+            if grp in seen_groups:
+                continue
+            seen_groups.add(grp)
+            link = str(a.get("LINK", "") or "").strip()
+            title = str(a.get("TITLE", "") or "").strip()
+            if not title and not link:
+                continue
+            article_rows.append({
+                "TOPIC_ID": tid,
+                "TITLE": title,
+                "LINK": link,
+                "SOURCE": str(a.get("SOURCE", "") or "").strip(),
+                "SENTIMENT": str(a.get("SENTIMENT", "") or "").strip(),
+                "PUBLISHED_DATE": str(a.get("PUBLISHED_DATE", "") or "")[:10],
+            })
+            if len(seen_groups) >= ARTICLES_PER_TOPIC:
+                break
+
         rows.append({
             "TOPIC_ID": tid,
             "TOPIC_TITLE": topic_title(topic_model, tid, g, used=used_titles),
@@ -246,6 +275,16 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
     out_path.parent.mkdir(exist_ok=True)
     ranked.to_csv(out_path, index=False, encoding="utf-8")
     print(f"Wrote ranked discovery topics -> {out_path}")
+
+    # Per-article drill-down file, keyed by TOPIC_ID (only topics that survived
+    # the quality filter, so the report doesn't reference dropped topics).
+    kept_topics = set(ranked["TOPIC_ID"].tolist())
+    art_df = pd.DataFrame(article_rows)
+    if not art_df.empty:
+        art_df = art_df[art_df["TOPIC_ID"].isin(kept_topics)]
+    articles_path = out_path.with_name("discovery_topic_articles.csv")
+    art_df.to_csv(articles_path, index=False, encoding="utf-8")
+    print(f"Wrote per-topic articles ({len(art_df)} rows) -> {articles_path}")
 
     print("\nTop candidate UNKNOWN risks (far from every existing risk):")
     for _, r in ranked.head(15).iterrows():

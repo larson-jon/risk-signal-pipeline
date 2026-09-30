@@ -39,6 +39,8 @@
   .card.discovery:hover { border-color: var(--green); border-left-color: var(--green); }
   .card.faq { border-left: 4px solid var(--accent); }
   .card.faq:hover { border-color: var(--accent); border-left-color: var(--accent); }
+  .card.status { border-left: 4px solid var(--red); }
+  .card.status:hover { border-color: var(--red); border-left-color: var(--red); }
   .empty { color: var(--muted); padding: 40px; text-align: center; }
   .how { background: #eef3fa; border: 1px solid var(--border); border-left: 4px solid var(--accent);
     border-radius: 8px; padding: 16px 20px; margin-top: 24px; color: #2b3a52; font-size: 13.5px; max-width: 78ch; }
@@ -62,6 +64,20 @@
 </header>
 <main>
   <div class="grid">
+    <a class="card status" href="risk_status_emerging.html">
+      <div class="card-title">Emerging Risk Status — at-a-glance grid</div>
+      <div class="card-desc">Each emerging risk classified Escalating / Elevated / Stable /
+      Cooling from its news signal, sorted so the urgent ones lead. Built for ERM triage.</div>
+      <div class="card-meta">Status by risk · for review</div>
+      <div class="card-go">Open status grid →</div>
+    </a>
+    <a class="card status" href="risk_status_enterprise.html">
+      <div class="card-title">Enterprise Risk Status — at-a-glance grid</div>
+      <div class="card-desc">Each enterprise risk classified Escalating / Elevated / Stable /
+      Cooling from its news signal, sorted so the urgent ones lead. Built for ERM triage.</div>
+      <div class="card-meta">Status by risk · for review</div>
+      <div class="card-go">Open status grid →</div>
+    </a>
     <a class="card" href="emerging_risks_report.html">
       <div class="card-title">Emerging Risk — Topic Explorer</div>
       <div class="card-desc">Emerging risks — full history clustering, trends, and taxonomy-gap analysis.</div>
@@ -105,6 +121,6 @@
     <b>How this was built</b> (the full methodology).
   </div>
 </main>
-<footer>Generated 2026-09-30 11:11 · self-contained HTML, no external dependencies.</footer>
+<footer>Generated 2026-09-30 16:16 · self-contained HTML, no external dependencies.</footer>
 </body>
 </html>
