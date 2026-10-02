@@ -35,3 +35,8 @@ trafilatura>=2.0.0
 # SEC EDGAR filing access (fetch_filings.py). Parses 10-K/10-Q into typed
 # objects with an addressable Risk Factors section.
 edgartools>=5.0.0
+
+# PDF text extraction for enforcement fetchers. fetch_enforcement.py reads FINRA
+# monthly disciplinary-action PDFs; fetch_sec_enforcement.py reads SEC admin-
+# proceeding order PDFs.
+pypdf>=4.0.0
