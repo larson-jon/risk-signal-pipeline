@@ -71,8 +71,34 @@ LISTINGS = {
         ("https://www.finra.org/rules-guidance/notices", "notice",
          re.compile(r'/rules-guidance/notices/(?:\d{2}-\d{2}|[a-z-]*notice-?\d+)[^"#?]*')),
     ],
+    # Commodity Futures Trading Commission: numbered press releases, with
+    # <time> tags on the listing. Relevant to prediction markets / event
+    # contracts, which keep surfacing as an emerging risk.
+    "CFTC": [
+        ("https://www.cftc.gov/PressRoom/PressReleases", "press release",
+         re.compile(r'/PressRoom/PressReleases/\d{4}-\d{2}')),
+    ],
+    # Consumer Financial Protection Bureau: newsroom with <time> tags. Relevant
+    # as brokerages expand into consumer credit (e.g. Robinhood Gold).
+    "CFPB": [
+        ("https://www.consumerfinance.gov/about-us/newsroom/?categories=press-release",
+         "press release",
+         # Article slugs under /about-us/newsroom/ (no year segment); require a
+         # multi-word slug so we skip the bare /newsroom/ and filter links.
+         re.compile(r'/about-us/newsroom/[a-z0-9][a-z0-9-]{15,}/')),
+    ],
+    # North American Securities Administrators Association: state securities
+    # regulators. WordPress site, absolute post URLs (/{postid}/{slug}/), no
+    # <time> on the listing - date falls back to the post page. Strong investor-
+    # protection signal (fraud trends, investor alerts) often ahead of federal.
+    "NASAA": [
+        ("https://www.nasaa.org/category/newsroom/current-headlines/", "news release",
+         re.compile(r'https://www\.nasaa\.org/\d+/[a-z0-9][^"#?]*')),
+    ],
 }
-BASE = {"SEC": "https://www.sec.gov", "FINRA": "https://www.finra.org"}
+BASE = {"SEC": "https://www.sec.gov", "FINRA": "https://www.finra.org",
+        "CFTC": "https://www.cftc.gov", "CFPB": "https://www.consumerfinance.gov",
+        "NASAA": "https://www.nasaa.org"}
 
 # A <time datetime="YYYY-MM-DD..."> tag, used to date rows on listing pages.
 _TIME_RE = re.compile(r'<time[^>]*datetime="(\d{4}-\d{2}-\d{2})')
@@ -201,13 +227,24 @@ def _clean(t):
 
 def _extract_title(html, fallback):
     m = _H1_RE.search(html) or _TITLE_RE.search(html)
-    if m:
-        t = re.sub(r"<[^>]+>", "", m.group(1))
-        t = _clean(t)
-        # strip trailing site suffix
-        t = re.split(r"\s*[|\u2013-]\s*(?:SEC\.gov|FINRA\.org|U\.S\. Securities)", t)[0]
-        if t:
-            return t
+    def _from(match):
+        if not match:
+            return ""
+        t = _clean(re.sub(r"<[^>]+>", "", match.group(1)))
+        # strip a trailing site-name suffix after a pipe/dash
+        t = re.split(r"\s*[|\u2013\u2014]\s*(?:SEC\.gov|FINRA\.org|CFTC|"
+                     r"Consumer Financial Protection Bureau|NASAA|U\.S\. Securities)", t)[0]
+        return t.strip()
+
+    h1 = _from(_H1_RE.search(html))
+    title_tag = _from(_TITLE_RE.search(html))
+    # CFTC <h1> is just "Release Number NNNN-YY"; prefer the <title> headline.
+    if h1 and not re.match(r"(?i)release number\s", h1):
+        return h1
+    if title_tag:
+        return title_tag
+    if h1:
+        return h1
     return _clean(fallback).title()
 
 
@@ -335,8 +372,9 @@ def save(rows):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Fetch SEC + FINRA primary releases into the pipeline schema.")
-    p.add_argument("--source", choices=["sec", "finra", "all"], default="all")
+    p = argparse.ArgumentParser(description="Fetch SEC/FINRA/CFTC/CFPB/NASAA primary releases into the pipeline schema.")
+    p.add_argument("--source", choices=["sec", "finra", "cftc", "cfpb", "nasaa", "all"],
+                   default="all")
     p.add_argument("--limit", type=int, default=20, dest="per_source_limit",
                    help="Max releases per listing page (default 20).")
     p.add_argument("--max-age-days", type=int, default=DEFAULT_MAX_AGE_DAYS, dest="max_age_days",
@@ -344,7 +382,11 @@ def main():
                         "pass 0 for no age filter).")
     args = p.parse_args()
 
-    agencies = {"sec": ["SEC"], "finra": ["FINRA"], "all": ["SEC", "FINRA"]}[args.source]
+    agencies = {
+        "sec": ["SEC"], "finra": ["FINRA"], "cftc": ["CFTC"],
+        "cfpb": ["CFPB"], "nasaa": ["NASAA"],
+        "all": ["SEC", "FINRA", "CFTC", "CFPB", "NASAA"],
+    }[args.source]
     print("#" * 60)
     print("REGULATORY RELEASE FETCH (SEC + FINRA primary sources)")
     print(f"Sources: {agencies} | per-source limit: {args.per_source_limit}"
