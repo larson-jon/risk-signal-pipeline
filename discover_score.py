@@ -61,19 +61,51 @@ FINRA_ANCHOR_PHRASES = [
 ]
 
 
-def load_finra_anchor(model):
-    """Return a single unit vector representing FINRA's regulatory domain,
-    or None if it can't be built."""
+# FINRA-MISSION anchor: phrases describing what threatens FINRA's MISSION
+# (investor protection + market integrity) and FINRA's own ability to regulate
+# member firms - as distinct from what merely threatens an individual broker-
+# dealer's business. This lets us tell apart a firm-level risk that stays with
+# the firm (e.g. the firm's climate exposure, its talent retention, its credit
+# rating) from a firm-level risk that becomes a FINRA-level concern because it
+# harms investors, degrades market integrity, or impairs member-firm oversight.
+# MISSION_RELEVANCE = cosine(cluster centroid, mean of these). High = the risk
+# bears on FINRA's mission, not just the filer's own operations.
+MISSION_ANCHOR_PHRASES = [
+    "harm to retail investors", "investor losses from firm failure",
+    "investor protection", "market integrity", "fair and orderly markets",
+    "broker-dealer supervision and compliance", "member firm misconduct",
+    "failure to supervise registered representatives",
+    "sales practice violations harming customers",
+    "customer funds and securities protection",
+    "systemic risk to the securities market",
+    "regulatory oversight of brokerage firms",
+    "new products evading securities regulation",
+    "gaps in regulatory jurisdiction over investor-facing products",
+    "FINRA examination and enforcement effectiveness",
+]
+
+
+def _mean_unit(model, phrases):
     from embedding_cache import encode_cached
     try:
-        vecs = encode_cached(model, FINRA_ANCHOR_PHRASES, model_name=EMBEDDING_MODEL,
-                             verbose=False)
+        vecs = encode_cached(model, phrases, model_name=EMBEDDING_MODEL, verbose=False)
     except Exception:
         return None
     if vecs is None or len(vecs) == 0:
         return None
-    anchor = vecs.mean(axis=0)
-    return anchor / (np.linalg.norm(anchor) + 1e-9)
+    v = vecs.mean(axis=0)
+    return v / (np.linalg.norm(v) + 1e-9)
+
+
+def load_finra_anchor(model):
+    """Unit vector for FINRA's financial/markets DOMAIN (is this in our world?)."""
+    return _mean_unit(model, FINRA_ANCHOR_PHRASES)
+
+
+def load_mission_anchor(model):
+    """Unit vector for FINRA's MISSION (does this bear on investor protection /
+    market integrity / member oversight, vs. being a firm-only risk?)."""
+    return _mean_unit(model, MISSION_ANCHOR_PHRASES)
 
 
 def load_all_risk_vectors(model):
@@ -180,6 +212,12 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon",
     else:
         print(f"Scoring FINRA-relevance against a {len(FINRA_ANCHOR_PHRASES)}-phrase domain anchor.")
 
+    mission_anchor = load_mission_anchor(model)
+    if mission_anchor is None:
+        print("NOTE: mission anchor unavailable; MISSION_RELEVANCE will be 0.")
+    else:
+        print(f"Scoring mission-relevance against a {len(MISSION_ANCHOR_PHRASES)}-phrase mission anchor.")
+
     # Dates for recency.
     df["_date"] = pd.to_datetime(df.get("PUBLISHED_DATE"), errors="coerce")
     df["month"] = df["_date"].dt.to_period("M").astype(str)
@@ -214,6 +252,14 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon",
             finra_relevance = round(max(0.0, float(centroid @ finra_anchor)), 4)
         else:
             finra_relevance = 0.0
+
+        # Mission-relevance: does this bear on investor protection / market
+        # integrity / member oversight (a FINRA-level concern), vs. being a
+        # firm-only risk (e.g. the firm's climate exposure or talent retention)?
+        if mission_anchor is not None:
+            mission_relevance = round(max(0.0, float(centroid @ mission_anchor)), 4)
+        else:
+            mission_relevance = 0.0
 
         distinct = int(g["DUP_GROUP"].nunique())
         avg_quality = round(float(g["QUALITY_SCORE"].mean()), 3)
@@ -261,6 +307,7 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon",
             "IS_NEW": is_new,
             "NOVELTY": novelty,
             "FINRA_RELEVANCE": finra_relevance,
+            "MISSION_RELEVANCE": mission_relevance,
             "NEAREST_RISK": f"{ns}:{rid}",
             "NEAREST_RISK_LABEL": rlabel,
             "NEAREST_RISK_SIM": round(nearest_sim, 4),
@@ -292,6 +339,7 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon",
     for _, r in ranked.head(15).iterrows():
         nf = " [NEW]" if r["IS_NEW"] else ""
         print(f"  novelty {r['NOVELTY']:.2f} finra {r['FINRA_RELEVANCE']:.2f} "
+              f"mission {r.get('MISSION_RELEVANCE', 0):.2f} "
               f"score {r['DISCOVERY_SCORE']:.2f}{nf}  "
               f"{str(r['TOPIC_TITLE'])[:42]}  "
               f"(nearest: {r['NEAREST_RISK']} @ {r['NEAREST_RISK_SIM']:.2f})")

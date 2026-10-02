@@ -31,3 +31,7 @@ python-pptx>=1.0.0
 # Full-text article extraction (article_text.py / discovery fetch). Replaces the
 # abandoned newspaper3k; installs cleanly on Python 3.13.
 trafilatura>=2.0.0
+
+# SEC EDGAR filing access (fetch_filings.py). Parses 10-K/10-Q into typed
+# objects with an addressable Risk Factors section.
+edgartools>=5.0.0
