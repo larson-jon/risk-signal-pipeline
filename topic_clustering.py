@@ -253,7 +253,7 @@ def dedup_documents(docs, embeddings, quality=None, threshold=DUP_SIMILARITY):
     return group_of, reps
 
 
-def make_topic_model(n_docs, embedding_model, nr_topics=None):
+def make_topic_model(n_docs, embedding_model, nr_topics=None, min_topic_size=None):
     """Create a BERTopic model with parameters that adapt to dataset size.
 
     HDBSCAN and UMAP defaults assume a fairly large corpus. For the small
@@ -275,8 +275,14 @@ def make_topic_model(n_docs, embedding_model, nr_topics=None):
         ngram_range=(1, 2),
     )
 
-    # Scale clustering granularity to corpus size.
-    min_topic_size = max(2, min(10, n_docs // 20))
+    # Scale clustering granularity to corpus size, unless the caller overrides.
+    # A smaller min_topic_size yields finer, more specific themes (useful for
+    # clean/curated corpora); the adaptive default merges harder to suppress
+    # noise in broad feeds.
+    if min_topic_size is None:
+        min_topic_size = max(2, min(10, n_docs // 20))
+    else:
+        min_topic_size = max(2, int(min_topic_size))
 
     common = dict(
         embedding_model=embedding_model,

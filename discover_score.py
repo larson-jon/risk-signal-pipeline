@@ -101,7 +101,8 @@ def load_all_risk_vectors(model):
     return np.vstack(rows), meta
 
 
-def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
+def run(input_path, out_path, nr_topics, min_quality, source="lexicon",
+        min_topic_size=None):
     input_path = Path(input_path)
     if not input_path.exists():
         print(f"ERROR: discovery corpus not found: {input_path}")
@@ -160,7 +161,8 @@ def run(input_path, out_path, nr_topics, min_quality, source="lexicon"):
         sys.exit(0)
 
     print(f"Clustering {len(rep_docs)} stories...")
-    topic_model = make_topic_model(len(rep_docs), model, nr_topics=nr_topics)
+    topic_model = make_topic_model(len(rep_docs), model, nr_topics=nr_topics,
+                                   min_topic_size=min_topic_size)
     rep_topics, _ = topic_model.fit_transform(rep_docs, embeddings=rep_emb)
     group_topic = {g: rep_topics[gi] for gi, g in enumerate(range(len(reps)))}
     df["TOPIC_ID"] = [int(group_topic[g]) for g in group_of]
@@ -302,6 +304,10 @@ def parse_args():
     p.add_argument("--nr-topics", dest="nr_topics", default=40,
                    help="Reduce to this many topics (int or 'auto').")
     p.add_argument("--min-quality", type=float, default=0.6, dest="min_quality")
+    p.add_argument("--min-topic-size", type=int, default=6, dest="min_topic_size",
+                   help="Smallest cluster size. Lower = finer, more specific themes "
+                        "(default 6, tuned for the curated discovery corpus); pass a larger "
+                        "value or 0 to auto-scale to corpus size.")
     p.add_argument("--source", choices=["lexicon", "category", "all"], default="lexicon",
                    help="Which fetched articles to score: 'lexicon' (risk-phrase "
                         "queries, default - most risk-relevant), 'category' (broad "
@@ -317,11 +323,14 @@ def main():
             nr_topics = int(nr_topics)
         except ValueError:
             nr_topics = None
+    # 0 means "auto-scale to corpus size" (make_topic_model treats None as auto).
+    min_topic_size = args.min_topic_size or None
     print("#" * 60)
     print("RISK DISCOVERY SCORING (novelty vs. full taxonomy)")
     print(f"Source: {args.source}")
     print("#" * 60)
-    run(args.input, args.out, nr_topics, args.min_quality, source=args.source)
+    run(args.input, args.out, nr_topics, args.min_quality, source=args.source,
+        min_topic_size=min_topic_size)
     print("Done.")
 
 

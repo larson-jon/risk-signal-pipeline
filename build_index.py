@@ -21,8 +21,8 @@ from pathlib import Path
 # Report file name -> (display title, one-line description). Files not listed
 # here still appear, using their embedded <title>.
 KNOWN = {
-    "enterprise_risks_report.html": "Enterprise risks — full history clustering, trends, and taxonomy-gap analysis.",
-    "emerging_risks_report.html": "Emerging risks — full history clustering, trends, and taxonomy-gap analysis.",
+    "enterprise_risks_report.html": "Enterprise risks: full history clustering, trends, and taxonomy-gap analysis.",
+    "emerging_risks_report.html": "Emerging risks: full history clustering, trends, and taxonomy-gap analysis.",
 }
 
 # Preferred display order (unlisted files sorted after, alphabetically).
@@ -98,9 +98,9 @@ def _card(r):
 def _discovery_card(discovery_file):
     """A distinct card linking to the discovery explainer page."""
     return f"""    <a class="card discovery" href="{discovery_file}">
-      <div class="card-title">Risk Discovery — finding risks off the list</div>
-      <div class="card-desc">How we search the language of risk to surface emerging
-      risks the current taxonomy doesn't cover yet.</div>
+      <div class="card-title">Risk Discovery: finding risks off the list</div>
+      <div class="card-desc">Themes clustered from a curated daily FINRA &amp; financial-news
+      digest, to surface emerging risks the current taxonomy doesn't cover yet.</div>
       <div class="card-meta">Candidate emerging risks &amp; how we find them</div>
       <div class="card-go">Learn more →</div>
     </a>"""
@@ -109,7 +109,7 @@ def _discovery_card(discovery_file):
 def _readme_card(readme_file):
     """A card linking to the rendered README / project documentation page."""
     return f"""    <a class="card" href="{readme_file}">
-      <div class="card-title">Documentation — how the pipeline works</div>
+      <div class="card-title">Documentation: how the pipeline works</div>
       <div class="card-desc">The full project README: pipeline stages, methodology,
       setup, usage, and output formats.</div>
       <div class="card-meta">Project reference</div>
@@ -120,9 +120,9 @@ def _readme_card(readme_file):
 def _faq_card(faq_file):
     """A card linking to the plain-language FAQ page."""
     return f"""    <a class="card faq" href="{faq_file}">
-      <div class="card-title">FAQ — plain-language answers</div>
+      <div class="card-title">FAQ: plain-language answers</div>
       <div class="card-desc">What this does, how far to trust it, and how to read the
-      output — for readers who don't work with the code. Covers the pipeline and risk discovery.</div>
+      output, for readers who don't work with the code. Covers the pipeline and risk discovery.</div>
       <div class="card-meta">Non-technical overview</div>
       <div class="card-go">Read the FAQ →</div>
     </a>"""
@@ -132,7 +132,7 @@ def _status_card(status_file, kind):
     """A card linking to a risk status grid (ERM decision surface)."""
     label = "Enterprise" if kind == "enterprise" else "Emerging"
     return f"""    <a class="card status" href="{status_file}">
-      <div class="card-title">{label} Risk Status — at-a-glance grid</div>
+      <div class="card-title">{label} Risk Status: at-a-glance grid</div>
       <div class="card-desc">Each {label.lower()} risk classified Escalating / Elevated / Stable /
       Cooling from its news signal, sorted so the urgent ones lead. Built for ERM triage.</div>
       <div class="card-meta">Status by risk · for review</div>
@@ -346,6 +346,10 @@ def _load_topic_articles(csv_path="output/discovery_topic_articles.csv"):
             "sentiment": str(r.get("SENTIMENT", "") or "").strip(),
             "date": str(r.get("PUBLISHED_DATE", "") or "").strip(),
         })
+    # Order each topic's articles most-recent first. Dates are ISO (YYYY-MM-DD)
+    # so string sort is chronological; blanks sort last.
+    for arts in by_topic.values():
+        arts.sort(key=lambda a: a["date"] or "0000-00-00", reverse=True)
     return by_topic
 
 
@@ -458,7 +462,7 @@ def _candidate_row(item):
     nov_pct = f"{item['novelty'] * 100:.0f}%"
     fin_pct = f"{item['finra'] * 100:.0f}%"
     band = _finra_band(item["finra"])
-    near = _html.escape(item["near_label"]) or "—"
+    near = _html.escape(item["near_label"]) or "n/a"
     near_pct = f"{item['near_sim'] * 100:.0f}%"
     articles = item.get("articles") or []
     n_art = len(articles)
@@ -581,7 +585,7 @@ def _render_novelty_relevance_plot(csv_path="output/discovery_ranked.csv"):
             fill, stroke = "#c7cdd6", "#9aa2ad"
         else:
             fill, stroke = "#0082D1", "#1d5f8f"
-        tip = _html.escape(f'{p["title"]} — relevance {p["x"]:.2f}, novelty {p["y"]:.2f}, '
+        tip = _html.escape(f'{p["title"]}: relevance {p["x"]:.2f}, novelty {p["y"]:.2f}, '
                            f'{p["stories"]} stories')
         parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{rr:.1f}" fill="{fill}" '
                      f'fill-opacity="0.75" stroke="{stroke}" stroke-width="1"><title>{tip}</title></circle>')
@@ -596,11 +600,11 @@ def _render_novelty_relevance_plot(csv_path="output/discovery_ranked.csv"):
     return f"""  <h2>Where do the clusters sit? <span class="review-flag">novelty × FINRA relevance</span></h2>
   <p>Each dot is a discovered theme. <b>Novelty</b> (vertical) is how far it sits from every risk
   already on our list; <b>FINRA relevance</b> (horizontal) is how close it sits to FINRA's
-  regulatory domain — securities, brokers, markets, investors, fraud, oversight. Dot size reflects
+  regulatory domain: securities, brokers, markets, investors, fraud, oversight. Dot size reflects
   the number of distinct stories. The <b style="color:#5a7d12">shaded top-right</b> is the sweet
-  spot: themes that are both new <i>and</i> on-domain — the strongest emerging-risk candidates.
-  Dots on the far left are novel but off-topic (sports, entertainment), which is why they're set
-  aside below. Hover any dot for its details.</p>
+  spot: themes that are both new <i>and</i> on-domain, the strongest emerging-risk candidates.
+  Dots toward the left are less central to FINRA's domain and are set aside below. Hover any dot
+  for its details.</p>
   <div class="panel plot-panel">{svg}</div>
 """
 
@@ -642,32 +646,59 @@ def _render_candidates():
 """
 
 
-def build_discovery_page(out_dir):
-    """Write reports/discovery.html explaining the risk-discovery collection."""
+def _email_corpus_stats():
+    """Live stats about the curated-digest corpus (output/email_news.csv)."""
+    path = Path("output/email_news.csv")
+    stats = {"exists": path.exists(), "total": 0, "sources": 0, "sections": [],
+             "latest": "", "earliest": ""}
+    if not path.exists():
+        return stats
     try:
-        from discover_fetch import RISK_LEXICON, DEFAULT_CATEGORIES
+        import pandas as pd
+        df = pd.read_csv(path)
+        stats["total"] = len(df)
+        stats["sources"] = int(df["SOURCE"].nunique()) if "SOURCE" in df else 0
+        if "CATEGORY" in df:
+            secs = (df["CATEGORY"].astype(str).str.replace("email:", "", regex=False)
+                    .str.replace(":paywalled", "", regex=False).str.strip())
+            stats["sections"] = [s for s in secs.value_counts().index.tolist() if s][:8]
+        if "PUBLISHED_DATE" in df:
+            d = pd.to_datetime(df["PUBLISHED_DATE"], errors="coerce").dropna()
+            if len(d):
+                stats["latest"] = str(d.max())[:10]
+                stats["earliest"] = str(d.min())[:10]
     except Exception:
-        RISK_LEXICON, DEFAULT_CATEGORIES = [], []
+        pass
+    return stats
 
-    s = _discovery_stats()
+
+def build_discovery_page(out_dir):
+    """Write reports/discovery.html explaining the risk-discovery collection.
+
+    Discovery is now sourced from a curated daily FINRA/financial-news digest
+    email (ingested via ingest_email_news.py), which is far higher-precision
+    than the earlier broad API/lexicon feeds.
+    """
+    s = _email_corpus_stats()
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    lex_chips = "".join(f'<span class="chip">{t}</span>' for t in RISK_LEXICON)
     plot = _render_novelty_relevance_plot()
     candidates = _render_candidates()
 
-    if s["exists"]:
-        lex_n = int(s["by_method"].get("LEXICON", 0))
-        corpus = (f'<div class="statline"><b>{lex_n:,}</b> risk-lexicon articles collected so far'
-                  f' · {s["sources"]:,} distinct sources'
-                  f'{" · latest " + s["latest"] if s["latest"] else ""}</div>')
+    if s["exists"] and s["total"]:
+        span = (f' · {s["earliest"]} → {s["latest"]}'
+                if s["earliest"] and s["latest"] else
+                (" · latest " + s["latest"] if s["latest"] else ""))
+        corpus = (f'<div class="statline"><b>{s["total"]:,}</b> curated stories ingested'
+                  f' · {s["sources"]:,} distinct sources{span}</div>')
+        if s["sections"]:
+            chips = "".join(f'<span class="chip">{c}</span>' for c in s["sections"])
+            corpus += f'<div class="chips">{chips}</div>'
     else:
-        corpus = ('<div class="statline muted">No discovery corpus yet — it builds up '
-                  'as the scheduled fetches run.</div>')
+        corpus = ('<div class="statline muted">No curated-digest corpus yet. Ingest a '
+                  'digest export with <code>ingest_email_news.py</code> to populate it.</div>')
 
     html = _DISCOVERY_TEMPLATE
-    html = html.replace("__LEX_CHIPS__", lex_chips or "<span class='muted'>(none)</span>")
-    html = html.replace("__LEX_COUNT__", str(len(RISK_LEXICON)))
     html = html.replace("__CORPUS__", corpus)
     html = html.replace("__PLOT__", plot)
     html = html.replace("__CANDIDATES__", candidates)
@@ -689,13 +720,13 @@ _FAQ_SECTIONS = [
          "It reads the news every day and shows which risks the world is talking about, "
          "whether that coverage is getting louder or quieter, and whether anything new is "
          "surfacing that isn't on our risk list yet."),
-        ("Why do we need it — don't we already track these risks?",
+        ("Why do we need it, don't we already track these risks?",
          "We track them by hand and on a review cycle. This watches continuously and "
          "measures how much is being said and in what tone, so a rising theme shows up in "
          "days rather than at the next scheduled review."),
         ("What decision does it help with?",
          "It gives risk staff an early-warning shortlist to help prioritize where to look. "
-         "It's a triage tool, not a verdict — a person confirms anything that matters."),
+         "It's a triage tool, not a verdict; a person confirms anything that matters."),
         ("Is it making decisions on its own?",
          "No. It ranks and summarizes news; people decide what to do about it."),
     ]),
@@ -715,7 +746,7 @@ _FAQ_SECTIONS = [
          "negative, or neutral. It's reasonable at scale but misses sarcasm and nuance."),
         ("How accurate is it? What's the error rate?",
          "There's no labeled 'correct answer' to score against, so we can't quote a precision "
-         "figure. Treat it as a prompt to investigate, not proof — a clean-looking chart can "
+         "figure. Treat it as a prompt to investigate, not proof; a clean-looking chart can "
          "still rest on shallow scoring or thin summaries."),
         ("Is our data going into ChatGPT or a public AI?",
          "No. It uses local, open-source language models to group similar text. Nothing "
@@ -729,12 +760,12 @@ _FAQ_SECTIONS = [
          "one theme instead of hundreds of separate headlines."),
         ("What's the difference between enterprise and emerging risks?",
          "Enterprise risks are already on our official list; emerging risks are forward-looking "
-         "ones we're watching. Both run through the identical process — only the watch-list of "
+         "ones we're watching. Both run through the identical process; only the watch-list of "
          "search terms differs."),
         ("What is a \u201ctrend\u201d or \u201csignal\u201d?",
          "Whether a topic's coverage is growing, fading, or spiking from month to month."),
         ("What is a \u201cgap\u201d?",
-         "A topic that's prominent and recent but doesn't fit the risk it came in under — a "
+         "A topic that's prominent and recent but doesn't fit the risk it came in under: a "
          "hint that our risk categories may be missing an angle."),
     ]),
     ("Risk discovery (finding risks off the list)", [
@@ -743,26 +774,21 @@ _FAQ_SECTIONS = [
          "design it can't reveal a risk nobody thought to look for. Discovery closes that blind "
          "spot by collecting news a different way and flagging themes that sit far from every "
          "risk we currently track."),
-        ("How does discovery find news without knowing what to look for?",
-         "It searches for the language of risk itself — phrases like \u201cregulators warn,\u201d "
-         "\u201cemerging risk,\u201d or \u201cunder scrutiny\u201d — which tend to describe a risk "
-         "surfacing regardless of the subject. That catches risk-shaped stories on any topic."),
+        ("Where does discovery's news come from?",
+         "A curated daily FINRA and financial-news digest: a broad, editorially-selected "
+         "roundup of securities, regulatory, and market coverage. Because it's pre-selected for "
+         "financial relevance, it surfaces risk-shaped stories without flooding the corpus with "
+         "unrelated general news."),
         ("What does \u201cnovelty\u201d mean on the discovery page?",
          "How far a theme sits from every risk already on our list. High novelty means the "
-         "theme doesn't closely match anything we currently track — a candidate worth a look."),
+         "theme doesn't closely match anything we currently track: a candidate worth a look."),
         ("What are \u201cmeaningful candidates\u201d versus \u201cbroad / benign\u201d clusters?",
-         "The discovery run groups news into themes and automatically separates risk-shaped "
-         "themes (meaningful candidates) from prominent-but-unremarkable ones like sports, "
-         "entertainment, or website error messages (broad / benign). The benign group is kept "
-         "for transparency, not because it's a risk."),
+         "The discovery run groups the news into themes and separates clearly risk-shaped ones "
+         "(meaningful candidates) from broader or less on-domain groupings (broad / benign). The "
+         "benign group is kept for transparency, not because it's a risk."),
         ("Is the discovery list a finished set of new risks?",
-         "No. It's a shortlist for a person to review, and it's intentionally a wide, "
-         "lower-precision net. It points to places to look; it doesn't decide what's a real "
-         "risk. Precision improves as more days of news accumulate."),
-        ("Why does discovery sometimes surface obvious noise?",
-         "Casting a wide net means some benign or off-topic clusters come through. That's "
-         "expected — they're separated out and labeled rather than hidden, so you can see "
-         "exactly what was set aside."),
+         "No. It's a shortlist for a person to review. It points to places to look; it doesn't "
+         "decide what's a real risk. Precision improves as more editions accumulate."),
     ]),
     ("Limits and what's next", [
         ("Could it miss an important risk?",
@@ -914,7 +940,7 @@ __CARDS__
   <div class="how">
     <b>What to look for.</b> Each report has four views: <b>Topics</b> (browse and search all
     clusters), <b>Trends over time</b> (which themes are growing per risk), <b>Candidate gaps</b>
-    (topics that are intense and recent but fit their risk poorly — possible blind spots), and
+    (topics that are intense and recent but fit their risk poorly, possible blind spots), and
     <b>How this was built</b> (the full methodology).
   </div>
 </main>
@@ -929,7 +955,7 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Risk Discovery — What We're Collecting</title>
+<title>Risk Discovery: What We're Collecting</title>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <style>
   /* FINRA brand palette (light theme) */
@@ -1021,11 +1047,11 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
     <h1>Risk Discovery: finding risks that aren't on our list</h1>
     <div class="tagline">Investor protection. Market integrity.</div>
     <p class="lede">The main pipeline only ever sees news that matched one of our existing risk
-    search terms — so by design it can't reveal a risk we never thought to search for. Risk
-    discovery closes that blind spot: it collects news by searching for the <i>language of risk
-    itself</i> — phrases like "regulators warn" or "emerging threat" that describe a risk
-    surfacing, regardless of subject — so we can flag coherent, significant themes that sit far
-    from every risk we currently track.</p>
+    search terms, so by design it can't reveal a risk we never thought to search for. Risk
+    discovery closes that blind spot: it draws on a <i>curated daily FINRA &amp; financial-news
+    digest</i>, a broad, editorially-selected stream of securities, regulatory, and market
+    coverage, then clusters it to flag coherent, significant themes that sit far from every risk
+    we currently track.</p>
   </div>
 </div>
 <main>
@@ -1033,29 +1059,24 @@ _DISCOVERY_TEMPLATE = r"""<!DOCTYPE html>
   <div class="panel">
     <h2>What we're collecting</h2>
     __CORPUS__
-    <p class="note">Because the news plan serves only the last ~48 hours per request, the corpus
-    accumulates forward over time — each scheduled run adds new, de-duplicated stories rather
-    than reaching back into history.</p>
+    <p class="note">The corpus accumulates forward over time: each digest edition adds new,
+    de-duplicated stories across the sections shown above.</p>
   </div>
 
-  <h2>How we collect: risk-lexicon search (__LEX_COUNT__ phrases)</h2>
-  <p>Each scheduled run searches for the <b>language of risk itself</b> — phrases that tend to
-  describe a risk becoming a concern, regardless of subject. This surfaces risk-shaped stories
-  on any topic without pre-naming any of them, and does it <i>without</i> reference to our
-  existing risk list. Phrases are favored over bare words (<code>"regulators warn"</code> is far
-  more precise than <code>"risk"</code>).</p>
-
-  <div class="panel">
-    <div class="method">
-      <h3>Risk-indicator phrases we search</h3>
-      <div class="chips">__LEX_CHIPS__</div>
-    </div>
-  </div>
+  <h2>How we collect: a curated news digest</h2>
+  <p>Discovery is sourced from a <b>daily FINRA &amp; financial-news digest email</b>, a
+  broad, editorially-curated roundup spanning FINRA, SEC, financial regulation, and markets
+  coverage. Because the digest is already selected for financial and regulatory relevance, it is
+  far higher-precision than an open keyword or category search: it surfaces risk-shaped stories
+  without flooding the corpus with unrelated general news.</p>
+  <p>Each edition is extracted and ingested into the same pipeline: cleaned, de-duplicated
+  (including syndicated reprints), sentiment-scored, and clustered, so the themes below are
+  built the same way as the rest of the reports, just from a better-curated source.</p>
 
   <h2>How a discovered risk is identified</h2>
   <p>The collected stories are cleaned for quality, de-duplicated (including near-identical
   syndicated reprints), and clustered into themes. Each theme is then scored for
-  <b>novelty</b> — how far it sits from <i>every</i> existing enterprise and emerging risk,
+  <b>novelty</b>: how far it sits from <i>every</i> existing enterprise and emerging risk,
   measured by semantic similarity:</p>
   <div class="panel">
     <p style="margin:0"><code>novelty = 1 − (closest match to any existing risk)</code></p>
@@ -1106,7 +1127,7 @@ _README_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Risk Signal Pipeline — Documentation</title>
+<title>Risk Signal Pipeline: Documentation</title>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <style>
   /* FINRA brand palette (light theme) */
@@ -1161,7 +1182,7 @@ _README_TEMPLATE = r"""<!DOCTYPE html>
 <div class="topbar">
   <div class="wrap">
     <a class="back" href="index.html">← Back to reports</a>
-    <h1>Risk Signal Pipeline — Documentation</h1>
+    <h1>Risk Signal Pipeline: Documentation</h1>
     <div class="tagline">Investor protection. Market integrity.</div>
   </div>
 </div>
@@ -1181,7 +1202,7 @@ _FAQ_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Risk Signal Pipeline — Frequently Asked Questions</title>
+<title>Risk Signal Pipeline: Frequently Asked Questions</title>
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&family=Lora:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
 <style>
   /* FINRA brand palette (light theme) */
@@ -1229,7 +1250,7 @@ _FAQ_TEMPLATE = r"""<!DOCTYPE html>
     <h1>Frequently Asked Questions</h1>
     <div class="tagline">Investor protection. Market integrity.</div>
     <p class="lede">Plain-language answers about what this project does, how far to trust it,
-    and how to read its output — written for readers who don't work with the code.</p>
+    and how to read its output, written for readers who don't work with the code.</p>
   </div>
 </div>
 <main>
